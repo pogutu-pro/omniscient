@@ -6,6 +6,7 @@ export interface Student {
   programme: string;
   year_of_study: number;
   preferences: Record<string, unknown>;
+  is_admin: boolean;
 }
 
 export interface AuthResponse {
@@ -109,4 +110,30 @@ export interface DisplayMessage {
   content: string;
   intent?: Domain;
   pending?: boolean;
+}
+
+// --- Admin ---
+export interface Programme {
+  id: string;
+  code: string;
+  name: string;
+  school: string;
+}
+
+export interface Course {
+  id: string;
+  programme_id: string;
+  code: string;
+  name: string;
+  year_of_study: number;
+  semester: number;
+}
+
+export interface AdminInsights {
+  total_students: number;
+  total_chat_sessions: number;
+  total_messages: number;
+  intent_counts: Record<string, number>;
+  complaint_category_counts: Record<string, number>;
+  complaint_status_counts: Record<string, number>;
 }

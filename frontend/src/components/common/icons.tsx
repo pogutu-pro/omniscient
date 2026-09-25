@@ -9,6 +9,7 @@
  */
 import {
   Activity,
+  BarChart3,
   Building2,
   Check,
   ChevronDown,
@@ -24,6 +25,9 @@ import {
   MessageSquare,
   Plus,
   Send,
+  ShieldCheck,
+  Trash2,
+  Upload,
   User,
   X,
   type LucideIcon,
@@ -56,3 +60,7 @@ export const MessageIcon = withDefaults(MessageSquare);
 export const HistoryIcon = withDefaults(History);
 export const ChevronDownIcon = withDefaults(ChevronDown);
 export const ChevronUpIcon = withDefaults(ChevronUp);
+export const AdminIcon = withDefaults(ShieldCheck);
+export const InsightsIcon = withDefaults(BarChart3);
+export const TrashIcon = withDefaults(Trash2);
+export const UploadIcon = withDefaults(Upload);

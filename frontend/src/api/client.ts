@@ -1,11 +1,14 @@
 import type {
   AcademicDeadline,
+  AdminInsights,
   AuthResponse,
   ChatMessage,
   ChatSessionSummary,
   Complaint,
+  Course,
   Hostel,
   PastPaper,
+  Programme,
   Student,
   TimetableEntry,
   TraceEvent,
@@ -86,12 +89,14 @@ export const housingApi = {
     area?: string;
     max_distance_km?: number;
     verified_only?: boolean;
+    limit?: number;
   }) => {
     const query = new URLSearchParams();
     if (params.max_budget_ksh) query.set('max_budget_ksh', String(params.max_budget_ksh));
     if (params.area) query.set('area', params.area);
     if (params.max_distance_km) query.set('max_distance_km', String(params.max_distance_km));
     if (params.verified_only) query.set('verified_only', 'true');
+    if (params.limit) query.set('limit', String(params.limit));
     return request<Hostel[]>(`/api/housing/hostels?${query.toString()}`);
   },
   get: (id: string) => request<Hostel>(`/api/housing/hostels/${id}`),
@@ -114,10 +119,11 @@ export const academicsApi = {
 
 // --- Past papers ---
 export const pastPapersApi = {
-  search: (params: { query?: string; course_code?: string } = {}) => {
+  search: (params: { query?: string; course_code?: string; limit?: number } = {}) => {
     const query = new URLSearchParams();
     if (params.query) query.set('query', params.query);
     if (params.course_code) query.set('course_code', params.course_code);
+    if (params.limit) query.set('limit', String(params.limit));
     return request<PastPaper[]>(`/api/past-papers?${query.toString()}`);
   },
 };
@@ -128,6 +134,97 @@ export const complaintsApi = {
     request<Complaint>('/api/complaints', { method: 'POST', body: JSON.stringify(data) }),
   list: () => request<Complaint[]>('/api/complaints'),
   get: (referenceCode: string) => request<Complaint>(`/api/complaints/${referenceCode}`),
+};
+
+// --- File uploads (attachments, past papers) ---
+export async function uploadFile(file: File): Promise<{ key: string; url: string }> {
+  const token = getToken();
+  const headers: Record<string, string> = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const body = new FormData();
+  body.append('file', file);
+
+  const response = await fetch(`${API_URL}/api/files/upload`, { method: 'POST', headers, body });
+  if (!response.ok) {
+    let detail = response.statusText;
+    try {
+      const parsed = await response.json();
+      detail = parsed.detail ?? detail;
+    } catch {
+      // no JSON body
+    }
+    throw new ApiError(response.status, typeof detail === 'string' ? detail : JSON.stringify(detail));
+  }
+  return response.json();
+}
+
+interface HostelWritePayload {
+  name: string;
+  area: string;
+  distance_from_campus_km: number;
+  price_ksh: number;
+  verified?: boolean;
+  amenities?: string[];
+  availability?: string;
+  description?: string;
+  contact_phone?: string | null;
+}
+
+// --- Admin ---
+export const adminApi = {
+  insights: () => request<AdminInsights>('/api/admin/insights'),
+
+  createHostel: (data: HostelWritePayload) =>
+    request<Hostel>('/api/admin/hostels', { method: 'POST', body: JSON.stringify(data) }),
+  updateHostel: (id: string, data: HostelWritePayload) =>
+    request<Hostel>(`/api/admin/hostels/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteHostel: (id: string) => request<void>(`/api/admin/hostels/${id}`, { method: 'DELETE' }),
+
+  listProgrammes: () => request<Programme[]>('/api/admin/programmes'),
+  createProgramme: (data: { code: string; name: string; school?: string }) =>
+    request<Programme>('/api/admin/programmes', { method: 'POST', body: JSON.stringify(data) }),
+
+  listCourses: (programmeCode?: string) => {
+    const query = new URLSearchParams();
+    if (programmeCode) query.set('programme_code', programmeCode);
+    return request<Course[]>(`/api/admin/courses?${query.toString()}`);
+  },
+  createCourse: (data: { programme_id: string; code: string; name: string; year_of_study: number; semester: number }) =>
+    request<Course>('/api/admin/courses', { method: 'POST', body: JSON.stringify(data) }),
+  deleteCourse: (id: string) => request<void>(`/api/admin/courses/${id}`, { method: 'DELETE' }),
+
+  createTimetableEntry: (data: {
+    course_id: string;
+    day_of_week: number;
+    start_time: string;
+    end_time: string;
+    venue: string;
+    session_type?: string;
+  }) => request<TimetableEntry>('/api/admin/timetable', { method: 'POST', body: JSON.stringify(data) }),
+  deleteTimetableEntry: (id: string) => request<void>(`/api/admin/timetable/${id}`, { method: 'DELETE' }),
+
+  createDeadline: (data: { programme_id?: string | null; title: string; description?: string; category?: string; due_date: string }) =>
+    request<AcademicDeadline>('/api/admin/deadlines', { method: 'POST', body: JSON.stringify(data) }),
+  deleteDeadline: (id: string) => request<void>(`/api/admin/deadlines/${id}`, { method: 'DELETE' }),
+
+  createPastPaper: (data: {
+    course_id: string;
+    programme_id: string;
+    academic_year: string;
+    semester: number;
+    exam_type?: string;
+    file_reference: string;
+    file_name: string;
+  }) => request<PastPaper>('/api/admin/past-papers', { method: 'POST', body: JSON.stringify(data) }),
+  deletePastPaper: (id: string) => request<void>(`/api/admin/past-papers/${id}`, { method: 'DELETE' }),
+
+  listComplaints: (status?: string) => {
+    const query = new URLSearchParams();
+    if (status) query.set('status', status);
+    return request<Complaint[]>(`/api/admin/complaints?${query.toString()}`);
+  },
+  updateComplaintStatus: (id: string, status: string) =>
+    request<Complaint>(`/api/admin/complaints/${id}/status?status=${encodeURIComponent(status)}`, { method: 'PATCH' }),
 };
 
 // --- Chat ---

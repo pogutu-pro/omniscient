@@ -3,6 +3,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useRecentSessions } from '../../hooks/useRecentSessions';
 import {
   AcademicsIcon,
+  AdminIcon,
   ComplaintsIcon,
   HousingIcon,
   LogoutIcon,
@@ -63,6 +64,15 @@ export function Sidebar() {
           <ComplaintsIcon /> Complaints
         </NavLink>
       </nav>
+
+      {student?.is_admin && (
+        <nav className="sidebar-group">
+          <div className="sidebar-group-label">Admin</div>
+          <NavLink to="/admin" className={({ isActive }) => `sidebar-link${isActive ? ' active' : ''}`}>
+            <AdminIcon /> Dashboard
+          </NavLink>
+        </nav>
+      )}
 
       <div className="sidebar-footer">
         {student ? (
