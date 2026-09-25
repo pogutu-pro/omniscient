@@ -31,3 +31,24 @@ class HostelSearchParams(BaseModel):
     amenities: list[str] = Field(default_factory=list)
     verified_only: bool = False
     limit: int = Field(default=10, ge=1, le=50)
+
+
+class HostelCreate(BaseModel):
+    """Admin-authored listing. `source` is always forced to "mock" by the
+    repository — an admin can never claim a listing came from Rumia."""
+
+    name: str = Field(min_length=2, max_length=160)
+    area: str = Field(min_length=2, max_length=120)
+    latitude: float | None = None
+    longitude: float | None = None
+    distance_from_campus_km: float = Field(ge=0, le=100)
+    price_ksh: int = Field(ge=0, le=500_000)
+    verified: bool = False
+    amenities: list[str] = Field(default_factory=list)
+    availability: str = Field(default="available", pattern="^(available|limited|full)$")
+    description: str = Field(default="", max_length=500)
+    contact_phone: str | None = Field(default=None, max_length=32)
+
+
+class HostelUpdate(HostelCreate):
+    pass

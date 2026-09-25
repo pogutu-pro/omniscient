@@ -34,12 +34,14 @@ async def db_session() -> AsyncIterator[AsyncSession]:
 @pytest_asyncio.fixture
 async def app_client(db_session: AsyncSession) -> AsyncIterator[AsyncClient]:
     from app.api.deps import get_db_session
+    from app.core.rate_limit import _rate_limiter
     from app.main import app
 
     async def _override_get_db_session():
         yield db_session
 
     app.dependency_overrides[get_db_session] = _override_get_db_session
+    _rate_limiter._hits.clear()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         yield client

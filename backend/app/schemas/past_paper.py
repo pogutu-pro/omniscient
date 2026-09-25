@@ -24,3 +24,18 @@ class PastPaperSearchParams(BaseModel):
     programme_code: str | None = Field(default=None, max_length=20)
     academic_year: str | None = Field(default=None, max_length=9)
     limit: int = Field(default=10, ge=1, le=50)
+
+
+class PastPaperCreate(BaseModel):
+    """`file_reference`/`file_name` must be a key already returned by
+    POST /api/files/upload - this endpoint only ever attaches metadata to
+    a file that has already gone through upload validation, it never
+    accepts raw file bytes itself."""
+
+    course_id: str
+    programme_id: str
+    academic_year: str = Field(min_length=4, max_length=9, pattern=r"^\d{4}(/\d{4})?$")
+    semester: int = Field(ge=1, le=3)
+    exam_type: str = Field(default="main", pattern="^(main|supplementary|cat)$")
+    file_reference: str = Field(min_length=1, max_length=500)
+    file_name: str = Field(min_length=1, max_length=255)

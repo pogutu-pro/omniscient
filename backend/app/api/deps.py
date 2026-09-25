@@ -84,6 +84,20 @@ async def get_current_student(
     return student
 
 
+async def get_current_admin(
+    student: Student = Depends(get_current_student),
+) -> Student:
+    """Gate for every /api/admin/* route. Checked against the student
+    record loaded from the DB for this request, never against a claim
+    made anywhere else (a token payload, a request body, or anything the
+    LLM might say) - see core/security.py, whose JWTs only ever carry a
+    student id, nothing else.
+    """
+    if not student.is_admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+    return student
+
+
 async def get_tool_context(
     hostel_repo: HostelRepository = Depends(get_hostel_repo),
     academic_repo: AcademicRepository = Depends(get_academic_repo),

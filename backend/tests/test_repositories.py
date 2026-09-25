@@ -5,12 +5,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.repositories.academic_repository import SqlAcademicRepository
 from app.repositories.complaint_repository import SqlComplaintRepository
-from app.repositories.hostel_repository import MockHostelRepository
+from app.repositories.hostel_repository import (
+    HostelWriteNotSupported,
+    MockHostelRepository,
+    RumiaPostgresHostelRepository,
+)
 from app.repositories.past_paper_repository import SqlPastPaperRepository
 from app.repositories.student_repository import SqlStudentRepository
-from app.schemas.academics import TimetableQuery
+from app.schemas.academics import CourseCreate, ProgrammeCreate, TimetableQuery
 from app.schemas.complaint import ComplaintCreate
-from app.schemas.housing import HostelSearchParams
+from app.schemas.housing import HostelCreate, HostelSearchParams, HostelUpdate
 from app.schemas.past_paper import PastPaperSearchParams
 from app.schemas.student import StudentCreate
 from tests.factories import make_course, make_hostel, make_past_paper, make_student, make_timetable_entry
@@ -40,6 +44,53 @@ async def test_hostel_search_verified_only(db_session: AsyncSession):
     results = await repo.search(HostelSearchParams(verified_only=True))
 
     assert [h.name for h in results] == ["Verified"]
+
+
+async def test_mock_hostel_repository_create_update_delete(db_session: AsyncSession):
+    repo = MockHostelRepository(db_session)
+
+    created = await repo.create(
+        HostelCreate(name="Repo Test Hostel", area="Boma", distance_from_campus_km=0.4, price_ksh=5000)
+    )
+    assert created.source == "mock"
+
+    updated = await repo.update(
+        created.id,
+        HostelUpdate(name="Renamed", area="Boma", distance_from_campus_km=0.4, price_ksh=5200, verified=True),
+    )
+    assert updated is not None
+    assert updated.name == "Renamed"
+    assert updated.verified is True
+
+    assert await repo.delete(created.id) is True
+    assert await repo.get_by_id(created.id) is None
+    assert await repo.delete(created.id) is False
+
+
+async def test_rumia_hostel_repository_writes_raise_not_supported():
+    repo = RumiaPostgresHostelRepository("postgresql+asyncpg://user:pass@localhost/rumia")
+
+    with pytest.raises(HostelWriteNotSupported):
+        await repo.create(HostelCreate(name="XX", area="Boma", distance_from_campus_km=0.4, price_ksh=5000))
+    with pytest.raises(HostelWriteNotSupported):
+        await repo.update("some-id", HostelUpdate(name="XX", area="Boma", distance_from_campus_km=0.4, price_ksh=5000))
+    with pytest.raises(HostelWriteNotSupported):
+        await repo.delete("some-id")
+
+
+async def test_academic_repository_programme_and_course_writes(db_session: AsyncSession):
+    repo = SqlAcademicRepository(db_session)
+
+    programme = await repo.create_programme(ProgrammeCreate(code="BSE", name="BSc Software Engineering"))
+    assert programme.code == "BSE"
+
+    course = await repo.create_course(
+        CourseCreate(programme_id=programme.id, code="SSE 2101", name="Software Design", year_of_study=2, semester=1)
+    )
+    assert course.programme_id == programme.id
+
+    assert await repo.delete_course(course.id) is True
+    assert await repo.delete_course(course.id) is False
 
 
 async def test_academic_repository_timetable_and_deadlines(db_session: AsyncSession):

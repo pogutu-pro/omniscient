@@ -13,6 +13,7 @@ class StudentOut(BaseModel):
     programme: str
     year_of_study: int
     preferences: dict
+    is_admin: bool
 
 
 class StudentCreate(BaseModel):

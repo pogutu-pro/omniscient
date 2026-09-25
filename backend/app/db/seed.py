@@ -175,7 +175,17 @@ async def seed(session: AsyncSession, settings: Settings) -> None:
         year_of_study=1,
         preferences={},
     )
-    session.add_all([demo_student, second_student])
+    demo_admin = Student(
+        registration_number="ADMIN-0001",
+        full_name="Omniscient Admin",
+        email="admin@dekut.ac.ke",
+        hashed_password=hash_password("AdminPass1!"),
+        programme="Administration",
+        year_of_study=1,
+        preferences={},
+        is_admin=True,
+    )
+    session.add_all([demo_student, second_student, demo_admin])
     await session.flush()
 
     # --- Demo complaint, so get_complaint_status has something to find ---

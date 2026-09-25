@@ -6,12 +6,25 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.academics import AcademicDeadline, Course, Programme, TimetableEntry
-from app.schemas.academics import AcademicDeadlineOut, CourseOut, ProgrammeOut, TimetableEntryOut, TimetableQuery
+from app.schemas.academics import (
+    AcademicDeadlineCreate,
+    AcademicDeadlineOut,
+    CourseCreate,
+    CourseOut,
+    ProgrammeCreate,
+    ProgrammeOut,
+    TimetableEntryCreate,
+    TimetableEntryOut,
+    TimetableQuery,
+)
 
 
 class AcademicRepository(ABC):
     @abstractmethod
     async def get_programme_by_code(self, code: str) -> ProgrammeOut | None: ...
+
+    @abstractmethod
+    async def list_programmes(self) -> list[ProgrammeOut]: ...
 
     @abstractmethod
     async def list_courses(self, programme_code: str | None, year_of_study: int | None) -> list[CourseOut]: ...
@@ -21,6 +34,28 @@ class AcademicRepository(ABC):
 
     @abstractmethod
     async def list_deadlines(self, programme_code: str | None, limit: int) -> list[AcademicDeadlineOut]: ...
+
+    # --- Admin writes ---
+    @abstractmethod
+    async def create_programme(self, data: ProgrammeCreate) -> ProgrammeOut: ...
+
+    @abstractmethod
+    async def create_course(self, data: CourseCreate) -> CourseOut: ...
+
+    @abstractmethod
+    async def delete_course(self, course_id: str) -> bool: ...
+
+    @abstractmethod
+    async def create_timetable_entry(self, data: TimetableEntryCreate) -> TimetableEntryOut: ...
+
+    @abstractmethod
+    async def delete_timetable_entry(self, entry_id: str) -> bool: ...
+
+    @abstractmethod
+    async def create_deadline(self, data: AcademicDeadlineCreate) -> AcademicDeadlineOut: ...
+
+    @abstractmethod
+    async def delete_deadline(self, deadline_id: str) -> bool: ...
 
 
 class SqlAcademicRepository(AcademicRepository):
@@ -82,3 +117,70 @@ class SqlAcademicRepository(AcademicRepository):
         stmt = stmt.order_by(AcademicDeadline.due_date.asc()).limit(limit)
         result = await self._session.execute(stmt)
         return [AcademicDeadlineOut.model_validate(d) for d in result.scalars().all()]
+
+    async def list_programmes(self) -> list[ProgrammeOut]:
+        result = await self._session.execute(select(Programme).order_by(Programme.name))
+        return [ProgrammeOut.model_validate(p) for p in result.scalars().all()]
+
+    async def create_programme(self, data: ProgrammeCreate) -> ProgrammeOut:
+        programme = Programme(**data.model_dump())
+        self._session.add(programme)
+        await self._session.commit()
+        await self._session.refresh(programme)
+        return ProgrammeOut.model_validate(programme)
+
+    async def create_course(self, data: CourseCreate) -> CourseOut:
+        course = Course(**data.model_dump())
+        self._session.add(course)
+        await self._session.commit()
+        await self._session.refresh(course)
+        return CourseOut.model_validate(course)
+
+    async def delete_course(self, course_id: str) -> bool:
+        course = await self._session.get(Course, course_id)
+        if not course:
+            return False
+        await self._session.delete(course)
+        await self._session.commit()
+        return True
+
+    async def create_timetable_entry(self, data: TimetableEntryCreate) -> TimetableEntryOut:
+        entry = TimetableEntry(**data.model_dump())
+        self._session.add(entry)
+        await self._session.commit()
+        await self._session.refresh(entry)
+        course = await self._session.get(Course, entry.course_id)
+        return TimetableEntryOut(
+            id=entry.id,
+            course_id=entry.course_id,
+            course_code=course.code if course else "",
+            course_name=course.name if course else "",
+            day_of_week=entry.day_of_week,
+            start_time=entry.start_time,
+            end_time=entry.end_time,
+            venue=entry.venue,
+            session_type=entry.session_type,
+        )
+
+    async def delete_timetable_entry(self, entry_id: str) -> bool:
+        entry = await self._session.get(TimetableEntry, entry_id)
+        if not entry:
+            return False
+        await self._session.delete(entry)
+        await self._session.commit()
+        return True
+
+    async def create_deadline(self, data: AcademicDeadlineCreate) -> AcademicDeadlineOut:
+        deadline = AcademicDeadline(**data.model_dump())
+        self._session.add(deadline)
+        await self._session.commit()
+        await self._session.refresh(deadline)
+        return AcademicDeadlineOut.model_validate(deadline)
+
+    async def delete_deadline(self, deadline_id: str) -> bool:
+        deadline = await self._session.get(AcademicDeadline, deadline_id)
+        if not deadline:
+            return False
+        await self._session.delete(deadline)
+        await self._session.commit()
+        return True

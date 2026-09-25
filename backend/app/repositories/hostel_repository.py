@@ -24,7 +24,13 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.core.config import Settings
 from app.models.housing import Hostel
-from app.schemas.housing import HostelOut, HostelSearchParams
+from app.schemas.housing import HostelCreate, HostelOut, HostelSearchParams, HostelUpdate
+
+
+class HostelWriteNotSupported(Exception):
+    """Raised when a write is attempted against a read-only repository
+    (RumiaPostgresHostelRepository). Admin CRUD only ever operates on
+    Omniscient's own data - it can never write into Rumia."""
 
 
 class HostelRepository(ABC):
@@ -33,6 +39,15 @@ class HostelRepository(ABC):
 
     @abstractmethod
     async def get_by_id(self, hostel_id: str) -> HostelOut | None: ...
+
+    @abstractmethod
+    async def create(self, data: HostelCreate) -> HostelOut: ...
+
+    @abstractmethod
+    async def update(self, hostel_id: str, data: HostelUpdate) -> HostelOut | None: ...
+
+    @abstractmethod
+    async def delete(self, hostel_id: str) -> bool: ...
 
 
 def _apply_filters(stmt, params: HostelSearchParams):
@@ -70,6 +85,31 @@ class MockHostelRepository(HostelRepository):
         hostel = await self._session.get(Hostel, hostel_id)
         return HostelOut.model_validate(hostel) if hostel else None
 
+    async def create(self, data: HostelCreate) -> HostelOut:
+        hostel = Hostel(**data.model_dump(), source="mock")
+        self._session.add(hostel)
+        await self._session.commit()
+        await self._session.refresh(hostel)
+        return HostelOut.model_validate(hostel)
+
+    async def update(self, hostel_id: str, data: HostelUpdate) -> HostelOut | None:
+        hostel = await self._session.get(Hostel, hostel_id)
+        if not hostel:
+            return None
+        for field, value in data.model_dump().items():
+            setattr(hostel, field, value)
+        await self._session.commit()
+        await self._session.refresh(hostel)
+        return HostelOut.model_validate(hostel)
+
+    async def delete(self, hostel_id: str) -> bool:
+        hostel = await self._session.get(Hostel, hostel_id)
+        if not hostel:
+            return False
+        await self._session.delete(hostel)
+        await self._session.commit()
+        return True
+
 
 class RumiaPostgresHostelRepository(HostelRepository):
     """Read-only implementation against Rumia's listings data.
@@ -99,6 +139,15 @@ class RumiaPostgresHostelRepository(HostelRepository):
         async with self._session_factory() as session:
             hostel = await session.get(Hostel, hostel_id)
             return HostelOut.model_validate(hostel) if hostel else None
+
+    async def create(self, data: HostelCreate) -> HostelOut:
+        raise HostelWriteNotSupported("Rumia-backed housing data is read-only")
+
+    async def update(self, hostel_id: str, data: HostelUpdate) -> HostelOut | None:
+        raise HostelWriteNotSupported("Rumia-backed housing data is read-only")
+
+    async def delete(self, hostel_id: str) -> bool:
+        raise HostelWriteNotSupported("Rumia-backed housing data is read-only")
 
 
 def get_hostel_repository(session: AsyncSession, settings: Settings) -> HostelRepository:

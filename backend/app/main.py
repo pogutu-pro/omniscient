@@ -6,7 +6,7 @@ from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api.routes import academics, auth, chat, complaints, files, housing, past_papers
+from app.api.routes import academics, admin, auth, chat, complaints, files, housing, past_papers
 from app.core.config import get_settings
 from app.core.logging import configure_logging, get_logger
 from app.core.rate_limit import enforce_default_rate_limit
@@ -58,6 +58,7 @@ app.include_router(academics.router)
 app.include_router(past_papers.router)
 app.include_router(complaints.router)
 app.include_router(files.router)
+app.include_router(admin.router)
 
 
 @app.get("/api/health")

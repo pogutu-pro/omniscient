@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings
 from app.models.academics import Course, Programme
 from app.models.past_paper import PastPaper
-from app.schemas.past_paper import PastPaperOut, PastPaperSearchParams
+from app.schemas.past_paper import PastPaperCreate, PastPaperOut, PastPaperSearchParams
 
 
 class PastPaperRepository(ABC):
@@ -17,6 +17,12 @@ class PastPaperRepository(ABC):
 
     @abstractmethod
     async def get_by_id(self, paper_id: str) -> PastPaperOut | None: ...
+
+    @abstractmethod
+    async def create(self, data: PastPaperCreate) -> PastPaperOut: ...
+
+    @abstractmethod
+    async def delete(self, paper_id: str) -> bool: ...
 
 
 def _to_out(paper: PastPaper, course: Course, settings: Settings) -> PastPaperOut:
@@ -64,3 +70,19 @@ class SqlPastPaperRepository(PastPaperRepository):
             return None
         paper, course = row
         return _to_out(paper, course, self._settings)
+
+    async def create(self, data: PastPaperCreate) -> PastPaperOut:
+        paper = PastPaper(**data.model_dump())
+        self._session.add(paper)
+        await self._session.commit()
+        await self._session.refresh(paper)
+        course = await self._session.get(Course, paper.course_id)
+        return _to_out(paper, course, self._settings)
+
+    async def delete(self, paper_id: str) -> bool:
+        paper = await self._session.get(PastPaper, paper_id)
+        if not paper:
+            return False
+        await self._session.delete(paper)
+        await self._session.commit()
+        return True

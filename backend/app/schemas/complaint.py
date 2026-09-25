@@ -5,6 +5,7 @@ import datetime as dt
 from pydantic import BaseModel, ConfigDict, Field
 
 ALLOWED_CATEGORIES = {"maintenance", "security", "academic", "hostel", "utilities", "other"}
+ALLOWED_STATUSES = {"submitted", "in_review", "resolved", "rejected"}
 
 
 class ComplaintOut(BaseModel):
