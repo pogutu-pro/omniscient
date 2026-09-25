@@ -20,7 +20,7 @@ omniscient/
       core/            Config, security, logging, rate limiting
       db/              Session, base, seed data
     migrations/         Alembic migrations
-    tests/              pytest suite (70+ tests)
+    tests/              pytest suite (95+ tests)
   frontend/            React + TypeScript + Vite, mobile-first
     src/
       pages/            Route-level screens
@@ -63,6 +63,10 @@ Backend runs at `http://localhost:8000`. Health check: `GET /api/health`.
 
 Demo login: `jane.wanjiru@dekut.ac.ke` / `Passw0rd!`
 Demo admin login: `admin@dekut.ac.ke` / `AdminPass1!` (seeded with `is_admin=True` — see [Admin dashboard](#admin-dashboard) below).
+
+## Generative UI
+
+Chat responses aren't plain text: the orchestrator deterministically maps each tool's own typed result to one of a fixed set of content blocks — table, list, card, comparison, file, image, chart — streamed as `content_block` SSE events alongside the existing trace, persisted per-message, and rendered by dedicated React components that reuse the app's own design tokens. The model never constructs UI itself (it only sees the same tool results and writes the prose around them); which block appears is entirely a function of which tool ran and its data shape, e.g. `search_hostels` → table (+ a price chart once there are 2+ results), `search_past_papers` → downloadable file list, `file_complaint` → a status card. Students can also attach an image or document to a message (paperclip button); images are sent as real multimodal content to vision-capable providers (Anthropic/OpenAI-compatible), while the mock provider gives an honest "I can't actually see images in offline mode" reply rather than fabricating a description.
 
 ### 3. Frontend
 ```bash

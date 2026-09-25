@@ -8,7 +8,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents import orchestrator
-from app.agents.providers.base import ChatTurn, LLMProvider
+from app.agents.providers.base import AttachmentContent, ChatTurn, LLMProvider
 from app.api.deps import (
     get_current_student,
     get_db_session,
@@ -26,6 +26,7 @@ from app.repositories.chat_repository import SqlChatRepository
 from app.repositories.student_repository import SqlStudentRepository
 from app.schemas.chat import ChatRequest
 from app.services import personalization_service
+from app.services.storage.factory import get_storage_backend
 from app.tools.registry import ToolContext, ToolRegistry
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
@@ -72,7 +73,25 @@ async def chat(
     history_messages = await chat_repo.list_messages(chat_session.id)
     history = [ChatTurn(role=m.role, content=m.content) for m in history_messages]
 
-    user_message = await chat_repo.add_message(chat_session.id, "user", payload.message)
+    storage = get_storage_backend(settings)
+    attachment_records: list[dict] = []
+    attachment_contents: list[AttachmentContent] = []
+    for attachment in payload.attachments:
+        try:
+            data = await storage.read(attachment.key)
+        except FileNotFoundError:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Attachment not found: {attachment.file_name}")
+        url = storage.url_for(attachment.key)
+        attachment_records.append(
+            {"key": attachment.key, "content_type": attachment.content_type, "file_name": attachment.file_name, "url": url}
+        )
+        attachment_contents.append(
+            AttachmentContent(filename=attachment.file_name, content_type=attachment.content_type, data=data, url=url)
+        )
+
+    user_message = await chat_repo.add_message(
+        chat_session.id, "user", payload.message, attachments=attachment_records or None
+    )
     remembered_preferences = (
         personalization_service.sanitize_preferences(student.preferences) if student else {}
     )
@@ -81,6 +100,7 @@ async def chat(
         final_text_parts: list[str] = []
         final_intent = "general"
         preference_updates: dict = {}
+        content_blocks: list[dict] = []
 
         yield _sse({"type": "session", "session_id": chat_session.id})
 
@@ -99,6 +119,7 @@ async def chat(
                     registry=registry,
                     provider=provider,
                     remembered_preferences=remembered_preferences,
+                    attachments=attachment_contents or None,
                 ):
                     event_dict = event.model_dump(exclude_none=True)
                     await chat_repo.add_trace_event(chat_session.id, user_message.id, event.type, event_dict)
@@ -126,6 +147,8 @@ async def chat(
 
                 if event_dict.get("type") == "answer_chunk" and event_dict.get("message"):
                     final_text_parts.append(event_dict["message"])
+                if event_dict.get("type") == "content_block" and event_dict.get("data"):
+                    content_blocks.append(event_dict["data"])
                 if event_dict.get("type") == "done" and event_dict.get("data"):
                     final_intent = event_dict["data"].get("intent", final_intent)
                     preference_updates = event_dict["data"].get("preference_updates") or {}
@@ -140,8 +163,10 @@ async def chat(
             await asyncio.gather(producer_task, return_exceptions=True)
 
         final_text = "".join(final_text_parts).strip()
-        if final_text:
-            await chat_repo.add_message(chat_session.id, "assistant", final_text, final_intent)
+        if final_text or content_blocks:
+            await chat_repo.add_message(
+                chat_session.id, "assistant", final_text, final_intent, content_blocks=content_blocks or None
+            )
         if student and preference_updates:
             await student_repo.update_preferences(student.id, preference_updates)
 
@@ -165,7 +190,15 @@ async def get_session_messages(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chat session not found")
     messages = await chat_repo.list_messages(session_id)
     return [
-        {"id": m.id, "role": m.role, "content": m.content, "intent": m.intent, "created_at": m.created_at.isoformat()}
+        {
+            "id": m.id,
+            "role": m.role,
+            "content": m.content,
+            "intent": m.intent,
+            "created_at": m.created_at.isoformat(),
+            "content_blocks": m.content_blocks,
+            "attachments": m.attachments,
+        }
         for m in messages
     ]
 

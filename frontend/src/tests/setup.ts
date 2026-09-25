@@ -5,3 +5,9 @@ import '@testing-library/jest-dom/vitest';
 if (!Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = () => {};
 }
+
+// jsdom doesn't implement Blob URLs, and vitest's own polyfill chokes on
+// jsdom's File objects - the chat composer only uses this for an instant
+// local image preview while an attachment uploads, so a stub is enough.
+URL.createObjectURL = () => 'blob:mock-url';
+URL.revokeObjectURL = () => {};

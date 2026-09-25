@@ -29,7 +29,7 @@ async def test_hostel_search_filters_by_budget_and_area(db_session: AsyncSession
     await make_hostel(db_session, name="Pricey Boma Room", area="Boma", price_ksh=15000)
     await make_hostel(db_session, name="Cheap Kamakwa Room", area="Kamakwa", price_ksh=4000)
 
-    repo = MockHostelRepository(db_session)
+    repo = MockHostelRepository(db_session, _FakeSettings())
     results = await repo.search(HostelSearchParams(max_budget_ksh=8000, area="Boma"))
 
     assert len(results) == 1
@@ -40,14 +40,14 @@ async def test_hostel_search_verified_only(db_session: AsyncSession):
     await make_hostel(db_session, name="Verified", verified=True)
     await make_hostel(db_session, name="Unverified", verified=False)
 
-    repo = MockHostelRepository(db_session)
+    repo = MockHostelRepository(db_session, _FakeSettings())
     results = await repo.search(HostelSearchParams(verified_only=True))
 
     assert [h.name for h in results] == ["Verified"]
 
 
 async def test_mock_hostel_repository_create_update_delete(db_session: AsyncSession):
-    repo = MockHostelRepository(db_session)
+    repo = MockHostelRepository(db_session, _FakeSettings())
 
     created = await repo.create(
         HostelCreate(name="Repo Test Hostel", area="Boma", distance_from_campus_km=0.4, price_ksh=5000)
@@ -68,7 +68,7 @@ async def test_mock_hostel_repository_create_update_delete(db_session: AsyncSess
 
 
 async def test_rumia_hostel_repository_writes_raise_not_supported():
-    repo = RumiaPostgresHostelRepository("postgresql+asyncpg://user:pass@localhost/rumia")
+    repo = RumiaPostgresHostelRepository("postgresql+asyncpg://user:pass@localhost/rumia", _FakeSettings())
 
     with pytest.raises(HostelWriteNotSupported):
         await repo.create(HostelCreate(name="XX", area="Boma", distance_from_campus_km=0.4, price_ksh=5000))

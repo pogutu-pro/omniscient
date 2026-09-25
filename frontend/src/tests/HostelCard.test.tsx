@@ -17,6 +17,8 @@ const baseHostel: Hostel = {
   description: 'Popular hostel near the main gate.',
   contact_phone: null,
   source: 'mock',
+  image_key: null,
+  image_url: null,
 };
 
 describe('HostelCard', () => {

@@ -35,7 +35,7 @@ class _AlwaysDownProvider(LLMProvider):
 
 def _ctx(db_session: AsyncSession) -> ToolContext:
     return ToolContext(
-        hostel_repo=MockHostelRepository(db_session),
+        hostel_repo=MockHostelRepository(db_session, _FakeSettings()),
         academic_repo=SqlAcademicRepository(db_session),
         past_paper_repo=SqlPastPaperRepository(db_session, _FakeSettings()),
         complaint_repo=SqlComplaintRepository(db_session),

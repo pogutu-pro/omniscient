@@ -168,6 +168,7 @@ interface HostelWritePayload {
   availability?: string;
   description?: string;
   contact_phone?: string | null;
+  image_key?: string | null;
 }
 
 // --- Admin ---
@@ -252,7 +253,11 @@ export interface StreamChatOptions {
 }
 
 export function streamChat(
-  payload: { session_id?: string | null; message: string },
+  payload: {
+    session_id?: string | null;
+    message: string;
+    attachments?: { key: string; content_type: string; file_name: string }[];
+  },
   onEvent: (event: TraceEvent) => void,
   signal?: AbortSignal,
   options: StreamChatOptions = {},

@@ -15,6 +15,7 @@ class PastPaperOut(BaseModel):
     semester: int
     exam_type: str
     file_name: str
+    file_reference: str
     download_url: str
 
 

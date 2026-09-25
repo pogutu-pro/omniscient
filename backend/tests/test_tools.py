@@ -18,7 +18,7 @@ class _FakeSettings:
 
 def _ctx(db_session: AsyncSession, student_id: str | None = None) -> ToolContext:
     return ToolContext(
-        hostel_repo=MockHostelRepository(db_session),
+        hostel_repo=MockHostelRepository(db_session, _FakeSettings()),
         academic_repo=SqlAcademicRepository(db_session),
         past_paper_repo=SqlPastPaperRepository(db_session, _FakeSettings()),
         complaint_repo=SqlComplaintRepository(db_session),

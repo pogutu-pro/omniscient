@@ -13,7 +13,7 @@ import asyncio
 import re
 from collections.abc import AsyncIterator
 
-from app.agents.providers.base import ChatTurn, LLMProvider, ToolCallProposal
+from app.agents.providers.base import AttachmentContent, ChatTurn, LLMProvider, ToolCallProposal
 
 KNOWN_AREAS = ["Boma", "Ruring'u", "Kamakwa", "Mawingo", "Outspan", "Karatina Road", "Majengo"]
 
@@ -87,6 +87,21 @@ def _extract_complaint_category(message: str) -> str:
     return "other"
 
 
+# Domain keywords plus generic request filler - stripped out so a natural
+# request like "Find Database Systems past papers" searches on "database
+# systems" (which actually matches a course name/code) rather than the
+# whole sentence (which matches nothing).
+_PAST_PAPER_FILLER = [*_PAST_PAPER_KEYWORDS, "find", "search for", "search", "show me", "get me", "for", "please"]
+
+
+def _extract_past_paper_query(message: str) -> str:
+    lower = message.lower()
+    for phrase in sorted(_PAST_PAPER_FILLER, key=len, reverse=True):
+        lower = lower.replace(phrase, " ")
+    cleaned = re.sub(r"\s+", " ", lower).strip()
+    return cleaned or message
+
+
 class MockProvider(LLMProvider):
     display_name = "Mock Assistant"
 
@@ -118,7 +133,7 @@ class MockProvider(LLMProvider):
             if day is not None:
                 parameters["day_of_week"] = day
         elif best_domain == "past_papers":
-            parameters["query"] = message
+            parameters["query"] = _extract_past_paper_query(message)
         elif best_domain == "complaints":
             ref_match = re.search(r"OMN-[A-F0-9]{6}", message.upper())
             if ref_match:
@@ -158,12 +173,40 @@ class MockProvider(LLMProvider):
         return []
 
     async def stream_final_answer(
-        self, *, message: str, intent: str, tool_results: list[dict], history: list[ChatTurn]
+        self,
+        *,
+        message: str,
+        intent: str,
+        tool_results: list[dict],
+        history: list[ChatTurn],
+        attachments: list[AttachmentContent] | None = None,
     ) -> AsyncIterator[str]:
-        text = _compose_answer(intent, tool_results)
+        text = _compose_attachment_reply(attachments) if attachments else _compose_answer(intent, tool_results)
         for chunk in _chunk_words(text):
             await asyncio.sleep(0)
             yield chunk
+
+
+def _compose_attachment_reply(attachments: list[AttachmentContent]) -> str:
+    # Deliberately honest rather than fabricating a plausible-sounding
+    # description: the mock provider has no model behind it, so it cannot
+    # actually see pixels. A real vision-capable provider (see
+    # AnthropicProvider/OpenAICompatibleProvider) receives the same
+    # attachment as real image bytes and can describe it for real.
+    images = [a for a in attachments if a.content_type.startswith("image/")]
+    others = [a for a in attachments if not a.content_type.startswith("image/")]
+    parts = []
+    if images:
+        names = ", ".join(a.filename for a in images)
+        parts.append(
+            f"I can see you've attached {'an image' if len(images) == 1 else f'{len(images)} images'} ({names}). "
+            "Omniscient is running in offline demo mode right now, so I can't actually analyze image content — "
+            "connect a real AI provider (Anthropic, OpenAI, Grok, or DeepSeek) via LLM_PROVIDER to enable that."
+        )
+    if others:
+        names = ", ".join(a.filename for a in others)
+        parts.append(f"I've also received {names} as an attachment for reference.")
+    return " ".join(parts)
 
 
 def _chunk_words(text: str, words_per_chunk: int = 4) -> list[str]:
@@ -194,36 +237,19 @@ def _compose_answer(intent: str, tool_results: list[dict]) -> str:
         hostels = data or []
         if not hostels:
             return "I couldn't find any hostels matching that budget and area. Try widening your search."
-        lines = [f"I found {len(hostels)} hostel option(s) for you:"]
-        for h in hostels[:5]:
-            verified = "verified" if h["verified"] else "unverified demo listing"
-            lines.append(
-                f"- {h['name']} in {h['area']}, KSh {h['price_ksh']:,}/month, "
-                f"{h['distance_from_campus_km']} km from campus ({verified})."
-            )
-        return " ".join(lines)
+        return f"I found {len(hostels)} hostel option{'s' if len(hostels) != 1 else ''} for you — see the details below."
 
     if tool_name == "get_timetable":
         entries = data or []
         if not entries:
             return "You have no scheduled classes matching that filter."
-        day_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-        lines = ["Here is your schedule:"]
-        for e in entries[:8]:
-            lines.append(
-                f"- {day_names[e['day_of_week']]} {e['start_time']}-{e['end_time']}: "
-                f"{e['course_code']} {e['course_name']} ({e['session_type']}) in {e['venue']}."
-            )
-        return " ".join(lines)
+        return "Here is your schedule:"
 
     if tool_name == "search_past_papers":
         papers = data or []
         if not papers:
             return "I couldn't find past papers matching that search. Try the unit code or name."
-        lines = [f"I found {len(papers)} past paper(s):"]
-        for p in papers[:5]:
-            lines.append(f"- {p['course_code']} {p['course_name']}, {p['academic_year']} semester {p['semester']} ({p['exam_type']}).")
-        return " ".join(lines)
+        return f"I found {len(papers)} past paper{'s' if len(papers) != 1 else ''} — you can download them below."
 
     if tool_name == "file_complaint":
         return f"Your complaint has been filed. Reference code: {data.get('reference_code')}. You can check its status any time with this code."

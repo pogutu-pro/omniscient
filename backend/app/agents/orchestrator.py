@@ -16,7 +16,8 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 
 from app.agents import router
-from app.agents.providers.base import ChatTurn, LLMProvider, ProviderUnavailable, ToolCallProposal
+from app.agents.content_blocks import build_blocks_for_tool
+from app.agents.providers.base import AttachmentContent, ChatTurn, LLMProvider, ProviderUnavailable, ToolCallProposal
 from app.schemas.chat import IntentResult, TraceEventOut
 from app.services import personalization_service
 from app.tools.registry import ToolContext, ToolRegistry
@@ -56,6 +57,7 @@ async def run(
     registry: ToolRegistry,
     provider: LLMProvider,
     remembered_preferences: dict | None = None,
+    attachments: list[AttachmentContent] | None = None,
 ) -> AsyncIterator[TraceEventOut]:
     result = OrchestratorResult()
     remembered_preferences = remembered_preferences or {}
@@ -63,6 +65,11 @@ async def run(
     yield TraceEventOut(
         type="status", message="Reading your message...", data={"provider": provider.display_name}
     )
+
+    if attachments:
+        async for event in _run_with_attachments(provider, message, history, attachments):
+            yield event
+        return
 
     try:
         intent_result: IntentResult = await router.classify(provider, message, history)
@@ -136,6 +143,9 @@ async def run(
             summary=tool_result.summary,
         )
 
+        for block in build_blocks_for_tool(proposal.tool, tool_result.ok, tool_result.data):
+            yield TraceEventOut(type="content_block", tool=proposal.tool, data=block.model_dump(mode="json"))
+
     async for chunk in _stream_answer(provider, message, intent_result.intent, tool_results, history):
         yield chunk
 
@@ -145,12 +155,44 @@ async def run(
     )
 
 
+async def _run_with_attachments(
+    provider: LLMProvider,
+    message: str,
+    history: list[ChatTurn],
+    attachments: list[AttachmentContent],
+) -> AsyncIterator[TraceEventOut]:
+    """Attachment turns skip domain-tool routing entirely: an uploaded
+    image or document isn't a hostel/timetable/paper/complaint query, so
+    there is nothing for the router or tool registry to do. The attachment
+    itself is already shown on the student's own message bubble (the
+    frontend renders `ChatMessage.attachments` there), so it is not echoed
+    again here - only the provider's comment on it, with the real image
+    bytes for a vision-capable provider, or an honest "I can't see images
+    in this mode" for the mock provider (see MockProvider.stream_final_answer).
+    """
+    has_image = any(a.content_type.startswith("image/") for a in attachments)
+    yield TraceEventOut(
+        type="status",
+        message="Looking at what you attached..." if has_image else "Looking at your attachment...",
+    )
+
+    async for chunk in _stream_answer(provider, message, "general", [], history, attachments=attachments):
+        yield chunk
+
+    yield TraceEventOut(type="done", data={"intent": "general", "preference_updates": {}})
+
+
 async def _stream_answer(
-    provider: LLMProvider, message: str, intent: str, tool_results: list[dict], history: list[ChatTurn]
+    provider: LLMProvider,
+    message: str,
+    intent: str,
+    tool_results: list[dict],
+    history: list[ChatTurn],
+    attachments: list[AttachmentContent] | None = None,
 ) -> AsyncIterator[TraceEventOut]:
     try:
         async for piece in provider.stream_final_answer(
-            message=message, intent=intent, tool_results=tool_results, history=history
+            message=message, intent=intent, tool_results=tool_results, history=history, attachments=attachments
         ):
             yield TraceEventOut(type="answer_chunk", message=piece)
     except ProviderUnavailable:

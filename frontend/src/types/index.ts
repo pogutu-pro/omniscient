@@ -29,6 +29,8 @@ export interface Hostel {
   description: string;
   contact_phone: string | null;
   source: string;
+  image_key: string | null;
+  image_url: string | null;
 }
 
 export interface TimetableEntry {
@@ -79,8 +81,102 @@ export interface Complaint {
 
 export type Domain = 'housing' | 'academics' | 'past_papers' | 'complaints' | 'general';
 
+// --- Generative UI content blocks ---
+// Mirrors backend/app/schemas/content_blocks.py exactly. The backend
+// builds these deterministically from a tool's own typed result (see
+// backend/app/agents/content_blocks.py) - the frontend's only job is to
+// render a fixed, closed set of block types, never to interpret free-form
+// content from the model as UI.
+export interface TableColumn {
+  key: string;
+  label: string;
+  align: 'left' | 'right';
+}
+
+export interface TableBlock {
+  type: 'table';
+  title?: string | null;
+  columns: TableColumn[];
+  rows: Record<string, string>[];
+}
+
+export interface ListItem {
+  title: string;
+  description: string;
+  meta?: string | null;
+  badge?: string | null;
+}
+
+export interface ListBlock {
+  type: 'list';
+  title?: string | null;
+  items: ListItem[];
+}
+
+export interface FieldItem {
+  label: string;
+  value: string;
+}
+
+export interface BlockAction {
+  label: string;
+  href: string;
+}
+
+export interface CardBlock {
+  type: 'card';
+  title: string;
+  subtitle?: string | null;
+  image_url?: string | null;
+  badge?: string | null;
+  badge_tone: 'neutral' | 'verified' | 'warning' | 'error' | 'info';
+  fields: FieldItem[];
+  actions: BlockAction[];
+}
+
+export interface ComparisonBlock {
+  type: 'comparison';
+  title?: string | null;
+  items: CardBlock[];
+}
+
+export interface FileItem {
+  name: string;
+  url: string;
+  kind: 'pdf' | 'image' | 'document' | 'other';
+  description?: string | null;
+}
+
+export interface FileBlock {
+  type: 'file';
+  title?: string | null;
+  files: FileItem[];
+}
+
+export interface ImageBlock {
+  type: 'image';
+  url: string;
+  alt: string;
+  caption?: string | null;
+}
+
+export interface ChartSeriesItem {
+  label: string;
+  value: number;
+}
+
+export interface ChartBlock {
+  type: 'chart';
+  chart_type: 'bar';
+  title?: string | null;
+  unit?: string | null;
+  series: ChartSeriesItem[];
+}
+
+export type ContentBlock = TableBlock | ListBlock | CardBlock | ComparisonBlock | FileBlock | ImageBlock | ChartBlock;
+
 export interface TraceEvent {
-  type: 'session' | 'status' | 'tool_call' | 'tool_result' | 'answer_chunk' | 'error' | 'done' | 'stream_end';
+  type: 'session' | 'status' | 'tool_call' | 'tool_result' | 'content_block' | 'answer_chunk' | 'error' | 'done' | 'stream_end';
   message?: string;
   tool?: string;
   status?: string;
@@ -89,12 +185,21 @@ export interface TraceEvent {
   session_id?: string;
 }
 
+export interface Attachment {
+  key: string;
+  content_type: string;
+  file_name: string;
+  url: string;
+}
+
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
   intent: Domain | null;
   created_at: string;
+  content_blocks?: ContentBlock[] | null;
+  attachments?: Attachment[] | null;
 }
 
 export interface ChatSessionSummary {
@@ -110,6 +215,8 @@ export interface DisplayMessage {
   content: string;
   intent?: Domain;
   pending?: boolean;
+  blocks?: ContentBlock[];
+  attachments?: Attachment[];
 }
 
 // --- Admin ---

@@ -1,5 +1,7 @@
 import { useEffect, useRef } from 'react';
-import type { DisplayMessage } from '../../types';
+import type { Attachment, ContentBlock, DisplayMessage } from '../../types';
+import { BlockRenderer } from './blocks/BlockRenderer';
+import { MessageText } from './MessageText';
 
 const SUGGESTIONS = [
   'Find me a hostel under KSh 8,000 near Boma',
@@ -7,6 +9,19 @@ const SUGGESTIONS = [
   'Find Database Systems past papers',
   'I want to report a broken water tap',
 ];
+
+function attachmentsToBlocks(attachments: Attachment[]): ContentBlock[] {
+  const images = attachments.filter((a) => a.content_type.startsWith('image/'));
+  const others = attachments.filter((a) => !a.content_type.startsWith('image/'));
+  const blocks: ContentBlock[] = images.map((a) => ({ type: 'image', url: a.url, alt: a.file_name }));
+  if (others.length > 0) {
+    blocks.push({
+      type: 'file',
+      files: others.map((a) => ({ name: a.file_name, url: a.url, kind: 'document' })),
+    });
+  }
+  return blocks;
+}
 
 function TypingIndicator({ isSlow }: { isSlow: boolean }) {
   return (
@@ -58,25 +73,32 @@ export function MessageList({
   // pending:false - the error banner + retry action already cover that
   // turn, so skip rendering an empty bubble here rather than showing a
   // blank row next to the avatar.
-  const visibleMessages = messages.filter((m) => m.pending || m.content || m.role === 'user');
+  const visibleMessages = messages.filter(
+    (m) => m.pending || m.content || (m.blocks && m.blocks.length > 0) || m.role === 'user',
+  );
 
   return (
     <div className="chat-scroll-inner">
-      {visibleMessages.map((message) => (
-        <div key={message.id} className={`message-row ${message.role}`}>
-          {message.role === 'assistant' && <div className="message-avatar">O</div>}
-          <div className="message-content">
-            {message.pending && !message.content ? (
-              <TypingIndicator isSlow={isSlow && message.id === lastId} />
-            ) : (
-              <>
-                {message.content}
-                {message.pending && <span className="message-cursor" />}
-              </>
-            )}
+      {visibleMessages.map((message) => {
+        const attachmentBlocks = message.attachments ? attachmentsToBlocks(message.attachments) : [];
+        return (
+          <div key={message.id} className={`message-row ${message.role}`}>
+            {message.role === 'assistant' && <div className="message-avatar">O</div>}
+            <div className="message-content">
+              {message.pending && !message.content && !(message.blocks && message.blocks.length) ? (
+                <TypingIndicator isSlow={isSlow && message.id === lastId} />
+              ) : (
+                <>
+                  {attachmentBlocks.length > 0 && <BlockRenderer blocks={attachmentBlocks} />}
+                  {message.blocks && message.blocks.length > 0 && <BlockRenderer blocks={message.blocks} />}
+                  <MessageText text={message.content} />
+                  {message.pending && <span className="message-cursor" />}
+                </>
+              )}
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
       <div ref={bottomRef} />
     </div>
   );

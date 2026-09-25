@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import mimetypes
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 
 from app.api.deps import get_past_paper_repo, get_settings_dep
@@ -45,11 +47,12 @@ async def download_past_paper(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Past paper not found")
     storage = get_storage_backend(settings)
     try:
-        content = await storage.read(paper.file_name)
+        content = await storage.read(paper.file_reference)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not available") from exc
+    content_type = mimetypes.guess_type(paper.file_name)[0] or "application/pdf"
     return Response(
         content=content,
-        media_type="application/pdf",
+        media_type=content_type,
         headers={"Content-Disposition": f'attachment; filename="{paper.file_name}"'},
     )

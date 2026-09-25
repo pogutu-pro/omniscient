@@ -82,6 +82,14 @@ The routes call the same repository write methods the read-side tools already de
 
 `InsightsOut` (`services/insights_service.py`) aggregates real, already-captured signal — `ChatMessage.intent` counts and complaint category/status counts — rather than fabricating a retraining claim; this is the honest interpretation of the brief's "learn from users" requirement.
 
+## Generative UI (content blocks)
+
+`schemas/content_blocks.py` defines a small, closed set of block types (table, list, card, comparison, file, image, chart). `agents/content_blocks.py:build_blocks_for_tool()` is the *only* place that decides which block(s) a tool's result becomes, keyed purely by tool name and the shape of its already-validated data — the same deterministic-mapping philosophy the rest of the agent stack uses for authorization and tool safety, applied to rendering. The model is never asked to choose or construct a block: it only ever sees the same tool results and writes the short prose that accompanies them (the system prompts for the real providers explicitly say not to re-list what the UI already renders).
+
+`orchestrator.run()` emits a `content_block` trace event (in addition to the existing `tool_call`/`tool_result`/`answer_chunk` events) right after each tool call resolves, so blocks always arrive before the text that discusses them. They're persisted on `ChatMessage.content_blocks` (JSON) alongside the plain-text `content`, so switching back to a past conversation renders the same rich UI it did live.
+
+Attachments (image or document) follow a separate, simpler path: `_run_with_attachments()` skips domain-tool routing entirely (an uploaded photo isn't a hostel/timetable/paper/complaint query) and calls `provider.stream_final_answer(..., attachments=...)` directly. `AnthropicProvider`/`OpenAICompatibleProvider` embed the image as base64 in the actual model request (a remote LLM API can't fetch a local dev storage URL, so bytes have to travel with the request); `MockProvider` gives an honest "I can't see images in offline mode" reply instead of fabricating a description. The attachment itself is shown once, on the student's own message bubble (`ChatMessage.attachments`) — the assistant's reply doesn't echo it back a second time.
+
 ## Personalization
 
 `services/personalization_service.py` stores a small, fixed set of fields on `Student.preferences` (housing budget/area today) — never an open-ended memory dump. `resolve_housing_preferences()` is the one function that decides what to use: an explicit value in the *current* message always wins over a remembered one, and the trace tells the student when a remembered preference was applied (e.g. "Using your usual budget of KSh 8,000 since none was given this time").

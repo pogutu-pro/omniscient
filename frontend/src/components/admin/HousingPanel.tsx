@@ -1,7 +1,7 @@
-import { useEffect, useState, type FormEvent } from 'react';
-import { adminApi, housingApi } from '../../api/client';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { adminApi, housingApi, uploadFile } from '../../api/client';
 import type { Hostel } from '../../types';
-import { TrashIcon } from '../common/icons';
+import { TrashIcon, UploadIcon } from '../common/icons';
 
 const AVAILABILITY_OPTIONS = ['available', 'limited', 'full'];
 
@@ -15,6 +15,8 @@ const EMPTY_FORM = {
   availability: 'available',
   description: '',
   contact_phone: '',
+  image_key: null as string | null,
+  image_url: null as string | null,
 };
 
 type FormState = typeof EMPTY_FORM;
@@ -26,6 +28,8 @@ export function HousingPanel() {
   const [error, setError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const imageInputRef = useRef<HTMLInputElement>(null);
 
   const load = () => {
     setLoading(true);
@@ -46,6 +50,8 @@ export function HousingPanel() {
       availability: hostel.availability,
       description: hostel.description,
       contact_phone: hostel.contact_phone ?? '',
+      image_key: hostel.image_key,
+      image_url: hostel.image_url,
     });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -71,6 +77,7 @@ export function HousingPanel() {
       availability: form.availability,
       description: form.description.trim(),
       contact_phone: form.contact_phone.trim() || null,
+      image_key: form.image_key,
     };
     setSaving(true);
     try {
@@ -86,6 +93,25 @@ export function HousingPanel() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleImageChange = async (file: File | null) => {
+    if (!file) return;
+    setError(null);
+    setUploadingImage(true);
+    try {
+      const uploaded = await uploadFile(file);
+      setForm((f) => ({ ...f, image_key: uploaded.key, image_url: uploaded.url }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not upload image.');
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
+  const removeImage = () => {
+    setForm((f) => ({ ...f, image_key: null, image_url: null }));
+    if (imageInputRef.current) imageInputRef.current.value = '';
   };
 
   const handleDelete = async (id: string) => {
@@ -182,6 +208,28 @@ export function HousingPanel() {
             />
           </div>
           <div className="field" style={{ gridColumn: '1 / -1' }}>
+            <label htmlFor="hostel-image">Photo (optional)</label>
+            <div className="admin-image-field">
+              {form.image_url && (
+                <div className="admin-image-preview">
+                  <img src={form.image_url} alt="" />
+                  <button type="button" className="admin-icon-btn" aria-label="Remove photo" onClick={removeImage}>
+                    <TrashIcon size={15} />
+                  </button>
+                </div>
+              )}
+              <input
+                id="hostel-image"
+                ref={imageInputRef}
+                className="input"
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                onChange={(e) => handleImageChange(e.target.files?.[0] ?? null)}
+              />
+              {uploadingImage && <span className="admin-image-uploading"><UploadIcon size={14} /> Uploading...</span>}
+            </div>
+          </div>
+          <div className="field" style={{ gridColumn: '1 / -1' }}>
             <label htmlFor="hostel-amenities">Amenities (comma-separated)</label>
             <input
               id="hostel-amenities"
@@ -226,6 +274,7 @@ export function HousingPanel() {
           <table className="admin-table">
             <thead>
               <tr>
+                <th />
                 <th>Name</th>
                 <th>Area</th>
                 <th>Price</th>
@@ -237,6 +286,13 @@ export function HousingPanel() {
             <tbody>
               {hostels.map((h) => (
                 <tr key={h.id}>
+                  <td>
+                    {h.image_url ? (
+                      <img src={h.image_url} alt="" className="admin-table-thumb" />
+                    ) : (
+                      <div className="admin-table-thumb admin-table-thumb-empty" />
+                    )}
+                  </td>
                   <td>{h.name}</td>
                   <td>{h.area}</td>
                   <td>KSh {h.price_ksh.toLocaleString()}</td>

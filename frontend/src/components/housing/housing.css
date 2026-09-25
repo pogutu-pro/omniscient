@@ -42,6 +42,15 @@
   gap: var(--space-3);
 }
 
+.hostel-card-image {
+  height: 160px;
+  object-fit: cover;
+  margin: calc(var(--space-5) * -1) calc(var(--space-5) * -1) 0;
+  width: calc(100% + var(--space-5) * 2);
+  border-top-left-radius: var(--radius-lg);
+  border-top-right-radius: var(--radius-lg);
+}
+
 .hostel-card-header {
   display: flex;
   justify-content: space-between;

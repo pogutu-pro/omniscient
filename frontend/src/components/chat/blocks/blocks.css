@@ -1,0 +1,359 @@
+/* Generative UI content blocks. Every block type shares the same visual
+   language as the rest of the product (cards, badges, tokens) — they are
+   deliberately restrained, not decorative: a block exists because the
+   data is structured, not because it looks impressive. */
+
+.block-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+  max-width: 100%;
+}
+
+.block-title {
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+  color: var(--color-text-secondary);
+}
+
+/* ---------- Table ---------- */
+.block-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+
+.block-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.block-table th,
+.block-table td {
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  white-space: nowrap;
+}
+
+.block-table th.align-right,
+.block-table td.align-right {
+  text-align: right;
+}
+
+.block-table th {
+  color: var(--color-text-tertiary);
+  font-weight: var(--font-medium);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: var(--color-surface-subtle);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.block-table tbody tr {
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.block-table tbody tr:last-child {
+  border-bottom: none;
+}
+
+/* ---------- List ---------- */
+.block-list {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  overflow: hidden;
+}
+
+.block-list-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.block-list-item:last-child {
+  border-bottom: none;
+}
+
+.block-list-item-title {
+  font-weight: var(--font-medium);
+  font-size: var(--text-sm);
+}
+
+.block-list-item-description {
+  color: var(--color-text-tertiary);
+  font-size: var(--text-sm);
+  margin-top: 2px;
+}
+
+.block-list-item-meta {
+  color: var(--color-text-tertiary);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  flex-shrink: 0;
+  text-align: right;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+/* ---------- Card ---------- */
+.block-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-width: 360px;
+}
+
+.block-card-image {
+  width: 100%;
+  height: 140px;
+  object-fit: cover;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-subtle);
+}
+
+.block-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.block-card-title {
+  font-size: var(--text-md);
+  font-weight: var(--font-semibold);
+}
+
+.block-card-subtitle {
+  color: var(--color-text-tertiary);
+  font-size: var(--text-sm);
+  margin-top: 2px;
+}
+
+.block-card-fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.block-card-field {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  font-size: var(--text-sm);
+  padding: 4px 0;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.block-card-field:last-child {
+  border-bottom: none;
+}
+
+.block-card-field-label {
+  color: var(--color-text-tertiary);
+}
+
+.block-card-field-value {
+  font-weight: var(--font-medium);
+  text-align: right;
+}
+
+.block-card-actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+/* ---------- Comparison (horizontal-scrolling row of cards) ---------- */
+.block-comparison-row {
+  display: flex;
+  gap: var(--space-3);
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.block-comparison-row .card {
+  flex: 0 0 260px;
+}
+
+/* ---------- File ---------- */
+.block-file-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.block-file-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  text-decoration: none;
+  color: inherit;
+  transition: background-color var(--transition-fast);
+}
+
+.block-file-item:hover {
+  background: var(--color-surface-hover);
+}
+
+.block-file-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  background: var(--color-brand-soft);
+  color: var(--color-brand);
+  flex-shrink: 0;
+}
+
+.block-file-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.block-file-name {
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.block-file-description {
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+}
+
+/* ---------- Image ---------- */
+.block-image-wrap {
+  max-width: 360px;
+}
+
+.block-image {
+  width: 100%;
+  max-height: 320px;
+  object-fit: cover;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+  display: block;
+}
+
+.block-image-caption {
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+  margin-top: var(--space-2);
+}
+
+/* ---------- Chart (hand-rolled horizontal bar chart — no charting
+   library, since a handful of bars doesn't justify the dependency) ---------- */
+.block-chart {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.block-chart-row {
+  display: grid;
+  grid-template-columns: minmax(72px, 30%) 1fr auto;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.block-chart-label {
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.block-chart-track {
+  height: 10px;
+  background: var(--color-surface-subtle);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+
+.block-chart-bar {
+  height: 100%;
+  background: var(--color-brand);
+  border-radius: var(--radius-full);
+}
+
+.block-chart-value {
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  white-space: nowrap;
+}
+
+/* ---------- Code (parsed from fenced blocks in the assistant's prose) ---------- */
+.block-code {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-subtle);
+  overflow: hidden;
+}
+
+.block-code-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+  font-family: var(--font-mono);
+}
+
+.block-code-copy {
+  border: none;
+  background: none;
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+  font-size: var(--text-xs);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+}
+
+.block-code-copy:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text-primary);
+}
+
+.block-code pre {
+  margin: 0;
+  padding: var(--space-3);
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+
+@media (max-width: 640px) {
+  .block-card,
+  .block-image-wrap {
+    max-width: 100%;
+  }
+}

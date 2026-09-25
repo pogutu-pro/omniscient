@@ -105,6 +105,49 @@ async def test_admin_can_create_update_delete_hostel(app_client: AsyncClient, db
     assert missing.status_code == 404
 
 
+async def test_admin_hostel_with_image_key_returns_computed_image_url(app_client: AsyncClient, db_session: AsyncSession):
+    token = await _make_admin_token(app_client, db_session, "hostel-image-admin@dekut.ac.ke")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    uploaded = await app_client.post(
+        "/api/files/upload",
+        files={"file": ("hostel.png", b"\x89PNG\r\n\x1a\n fake png bytes", "image/png")},
+        headers=headers,
+    )
+    assert uploaded.status_code == 201
+    image_key = uploaded.json()["key"]
+
+    created = await app_client.post(
+        "/api/admin/hostels",
+        json={
+            "name": "Photographed Hostel",
+            "area": "Boma",
+            "distance_from_campus_km": 0.5,
+            "price_ksh": 5000,
+            "image_key": image_key,
+        },
+        headers=headers,
+    )
+    assert created.status_code == 201
+    body = created.json()
+    assert body["image_url"] == f"http://localhost:8000/api/files/{image_key}"
+
+    public = await app_client.get(f"/api/housing/hostels/{body['id']}")
+    assert public.json()["image_url"] == body["image_url"]
+
+
+async def test_admin_hostel_without_image_key_has_no_image_url(app_client: AsyncClient, db_session: AsyncSession):
+    token = await _make_admin_token(app_client, db_session, "hostel-no-image-admin@dekut.ac.ke")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    created = await app_client.post(
+        "/api/admin/hostels",
+        json={"name": "Plain Hostel", "area": "Boma", "distance_from_campus_km": 0.5, "price_ksh": 5000},
+        headers=headers,
+    )
+    assert created.json()["image_url"] is None
+
+
 async def test_admin_update_delete_hostel_not_found(app_client: AsyncClient, db_session: AsyncSession):
     token = await _make_admin_token(app_client, db_session, "hostel-404-admin@dekut.ac.ke")
     headers = {"Authorization": f"Bearer {token}"}

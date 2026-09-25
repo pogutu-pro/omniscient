@@ -22,6 +22,14 @@ class ChatMessage(Base, TimestampMixin):
     role: Mapped[str] = mapped_column(String(20), nullable=False)  # user | assistant
     content: Mapped[str] = mapped_column(String(8000), nullable=False)
     intent: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    # Generative-UI blocks (assistant messages) built deterministically from
+    # tool results - see agents/content_blocks.py. Persisted here (not just
+    # in trace_events) so switching back to a past conversation renders the
+    # same rich UI it did live, not just plain text.
+    content_blocks: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    # Files the student attached to a user message (already uploaded via
+    # POST /api/files/upload before the chat request was sent).
+    attachments: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
 
 class TraceEvent(Base, TimestampMixin):

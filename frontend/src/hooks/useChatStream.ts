@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { fetchSessionMessages, streamChat } from '../api/client';
-import type { DisplayMessage, Domain, TraceEvent } from '../types';
+import type { Attachment, ContentBlock, DisplayMessage, Domain, TraceEvent } from '../types';
 
 let idCounter = 0;
 function nextId(): string {
@@ -27,7 +27,7 @@ export function useChatStream(initialSessionId?: string | null) {
   const [canRetry, setCanRetry] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const slowTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastFailedRef = useRef<{ text: string; assistantId: string } | null>(null);
+  const lastFailedRef = useRef<{ text: string; assistantId: string; attachments?: Attachment[] } | null>(null);
 
   const armSlowWatchdog = useCallback(() => {
     if (slowTimerRef.current) clearTimeout(slowTimerRef.current);
@@ -71,7 +71,14 @@ export function useChatStream(initialSessionId?: string | null) {
       .then((history) => {
         if (cancelled) return;
         setMessages(
-          history.map((m) => ({ id: m.id, role: m.role, content: m.content, intent: m.intent ?? undefined })),
+          history.map((m) => ({
+            id: m.id,
+            role: m.role,
+            content: m.content,
+            intent: m.intent ?? undefined,
+            blocks: m.content_blocks ?? undefined,
+            attachments: m.attachments ?? undefined,
+          })),
         );
       })
       .catch(() => {
@@ -94,7 +101,7 @@ export function useChatStream(initialSessionId?: string | null) {
   );
 
   const runSend = useCallback(
-    async (trimmed: string, assistantId: string) => {
+    async (trimmed: string, assistantId: string, attachments?: Attachment[]) => {
       setError(null);
       setTrace([]);
       setIsWriting(false);
@@ -105,10 +112,15 @@ export function useChatStream(initialSessionId?: string | null) {
       abortRef.current = controller;
       let assistantText = '';
       let intent: Domain | undefined;
+      const blocks: ContentBlock[] = [];
 
       try {
         await streamChat(
-          { session_id: sessionId, message: trimmed },
+          {
+            session_id: sessionId,
+            message: trimmed,
+            attachments: attachments?.map((a) => ({ key: a.key, content_type: a.content_type, file_name: a.file_name })),
+          },
           (event) => {
             if (event.type === 'session' && event.session_id) {
               setSessionId(event.session_id);
@@ -118,6 +130,10 @@ export function useChatStream(initialSessionId?: string | null) {
             }
             if (event.type === 'status' && typeof event.data?.provider === 'string') {
               setProviderName(event.data.provider);
+            }
+            if (event.type === 'content_block' && event.data) {
+              blocks.push(event.data as unknown as ContentBlock);
+              setMessages((prev) => prev.map((m) => (m.id === assistantId ? { ...m, blocks: [...blocks] } : m)));
             }
             if (event.type === 'answer_chunk' && event.message) {
               setIsWriting(true);
@@ -140,7 +156,7 @@ export function useChatStream(initialSessionId?: string | null) {
         setCanRetry(false);
       } catch (err) {
         if (!controller.signal.aborted) {
-          lastFailedRef.current = { text: trimmed, assistantId };
+          lastFailedRef.current = { text: trimmed, assistantId, attachments };
           setCanRetry(true);
           setError(
             err instanceof Error && err.message === 'Connection timed out.'
@@ -161,14 +177,14 @@ export function useChatStream(initialSessionId?: string | null) {
   );
 
   const sendMessage = useCallback(
-    (text: string) => {
+    (text: string, attachments?: Attachment[]) => {
       const trimmed = text.trim();
-      if (!trimmed || isStreaming) return;
+      if ((!trimmed && !attachments?.length) || isStreaming) return;
 
-      const userMessage: DisplayMessage = { id: nextId(), role: 'user', content: trimmed };
+      const userMessage: DisplayMessage = { id: nextId(), role: 'user', content: trimmed, attachments };
       const assistantId = nextId();
       setMessages((prev) => [...prev, userMessage, { id: assistantId, role: 'assistant', content: '', pending: true }]);
-      void runSend(trimmed, assistantId);
+      void runSend(trimmed, assistantId, attachments);
     },
     [isStreaming, runSend],
   );
@@ -180,7 +196,7 @@ export function useChatStream(initialSessionId?: string | null) {
     setMessages((prev) =>
       prev.map((m) => (m.id === failed.assistantId ? { ...m, content: '', pending: true, intent: undefined } : m)),
     );
-    void runSend(failed.text, failed.assistantId);
+    void runSend(failed.text, failed.assistantId, failed.attachments);
   }, [isStreaming, runSend]);
 
   return {

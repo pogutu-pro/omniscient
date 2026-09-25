@@ -19,6 +19,8 @@ class HostelOut(BaseModel):
     description: str
     contact_phone: str | None = None
     source: str
+    image_key: str | None = None
+    image_url: str | None = None
 
 
 class HostelSearchParams(BaseModel):
@@ -48,6 +50,7 @@ class HostelCreate(BaseModel):
     availability: str = Field(default="available", pattern="^(available|limited|full)$")
     description: str = Field(default="", max_length=500)
     contact_phone: str | None = Field(default=None, max_length=32)
+    image_key: str | None = Field(default=None, max_length=500)
 
 
 class HostelUpdate(HostelCreate):

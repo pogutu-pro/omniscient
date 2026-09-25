@@ -12,10 +12,11 @@ with `LLM_API_BASE` pointed at it.
 """
 from __future__ import annotations
 
+import base64
 import json
 from collections.abc import AsyncIterator
 
-from app.agents.providers.base import ChatTurn, LLMProvider, ProviderUnavailable, ToolCallProposal
+from app.agents.providers.base import AttachmentContent, ChatTurn, LLMProvider, ProviderUnavailable, ToolCallProposal
 
 _INTENT_FUNCTION = {
     "name": "classify_intent",
@@ -37,7 +38,9 @@ _INTENT_FUNCTION = {
 _SAFE_SYSTEM_PROMPT = (
     "You are Omniscient, a campus assistant for Dedan Kimathi University of Technology (DeKUT) "
     "students in Nyeri, Kenya. You only answer using the tool results you are given — never invent "
-    "hostel listings, timetable entries, past papers, or complaint statuses. Be concise and practical."
+    "hostel listings, timetable entries, past papers, or complaint statuses. Be concise and practical. "
+    "Structured results (tables, cards, lists, files) are already rendered separately in the UI below "
+    "your reply — write a short, conversational sentence or two, and do not re-list every item yourself."
 )
 
 
@@ -120,15 +123,45 @@ class OpenAICompatibleProvider(LLMProvider):
         return proposals
 
     async def stream_final_answer(
-        self, *, message: str, intent: str, tool_results: list[dict], history: list[ChatTurn]
+        self,
+        *,
+        message: str,
+        intent: str,
+        tool_results: list[dict],
+        history: list[ChatTurn],
+        attachments: list[AttachmentContent] | None = None,
     ) -> AsyncIterator[str]:
-        grounding = json.dumps(tool_results, default=str)
-        prompt = (
-            f"Student message: {message!r}\nIntent: {intent}\n"
-            f"Tool results (the ONLY facts you may state): {grounding}\n"
-            "Write a short, helpful, grounded reply. If tool results are empty or failed, say so plainly "
-            "instead of guessing."
-        )
+        if attachments:
+            content: list[dict] = []
+            for attachment in attachments:
+                if attachment.content_type.startswith("image/"):
+                    b64 = base64.b64encode(attachment.data).decode("ascii")
+                    content.append(
+                        {"type": "image_url", "image_url": {"url": f"data:{attachment.content_type};base64,{b64}"}}
+                    )
+            attachment_names = ", ".join(a.filename for a in attachments)
+            content.append(
+                {
+                    "type": "text",
+                    "text": (
+                        f"Student message: {message!r}\nAttached file(s): {attachment_names}\n"
+                        "Describe/answer based on what you can actually see in the attached image(s). "
+                        "If a file isn't an image you can't read its contents — say so plainly rather "
+                        "than guessing at what it contains."
+                    ),
+                }
+            )
+            user_message: dict = {"role": "user", "content": content}
+        else:
+            grounding = json.dumps(tool_results, default=str)
+            prompt = (
+                f"Student message: {message!r}\nIntent: {intent}\n"
+                f"Tool results (the ONLY facts you may state): {grounding}\n"
+                "Write a short, helpful, grounded reply. If tool results are empty or failed, say so plainly "
+                "instead of guessing."
+            )
+            user_message = {"role": "user", "content": prompt}
+
         try:
             stream = await self._client.chat.completions.create(
                 model=self._model,
@@ -136,7 +169,7 @@ class OpenAICompatibleProvider(LLMProvider):
                 messages=[
                     {"role": "system", "content": _SAFE_SYSTEM_PROMPT},
                     *self._history_messages(history),
-                    {"role": "user", "content": prompt},
+                    user_message,
                 ],
                 stream=True,
             )

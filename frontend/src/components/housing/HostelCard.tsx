@@ -10,6 +10,7 @@ const availabilityLabel: Record<string, string> = {
 export function HostelCard({ hostel }: { hostel: Hostel }) {
   return (
     <div className="card hostel-card">
+      {hostel.image_url && <img src={hostel.image_url} alt="" className="hostel-card-image" />}
       <div className="hostel-card-header">
         <div>
           <h3>{hostel.name}</h3>

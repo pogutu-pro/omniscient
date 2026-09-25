@@ -45,4 +45,40 @@ describe('MessageList', () => {
     render(<MessageList messages={messages} isSlow={true} onSuggestion={vi.fn()} />);
     expect(screen.getByText('Still working on it...')).toBeInTheDocument();
   });
+
+  it('renders content blocks attached to an assistant message', () => {
+    const messages: DisplayMessage[] = [
+      { id: '1', role: 'user', content: 'Find me a hostel' },
+      {
+        id: '2',
+        role: 'assistant',
+        content: 'Here are some options.',
+        blocks: [
+          {
+            type: 'table',
+            columns: [{ key: 'name', label: 'Name', align: 'left' }],
+            rows: [{ name: 'Boma View Hostel' }],
+          },
+        ],
+      },
+    ];
+    render(<MessageList messages={messages} isSlow={false} onSuggestion={vi.fn()} />);
+    expect(screen.getByText('Boma View Hostel')).toBeInTheDocument();
+    expect(screen.getByText('Here are some options.')).toBeInTheDocument();
+  });
+
+  it('renders an image attachment on a user message', () => {
+    const messages: DisplayMessage[] = [
+      {
+        id: '1',
+        role: 'user',
+        content: "What's in this photo?",
+        attachments: [{ key: 'uploads/x.png', content_type: 'image/png', file_name: 'photo.png', url: 'http://x/photo.png' }],
+      },
+      { id: '2', role: 'assistant', content: 'I cannot see images in offline mode.' },
+    ];
+    render(<MessageList messages={messages} isSlow={false} onSuggestion={vi.fn()} />);
+    const image = screen.getByAltText('photo.png');
+    expect(image).toHaveAttribute('src', 'http://x/photo.png');
+  });
 });

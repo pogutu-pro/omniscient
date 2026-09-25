@@ -36,6 +36,7 @@ def _to_out(paper: PastPaper, course: Course, settings: Settings) -> PastPaperOu
         semester=paper.semester,
         exam_type=paper.exam_type,
         file_name=paper.file_name,
+        file_reference=paper.file_reference,
         download_url=f"{settings.api_url}/api/past-papers/{paper.id}/download",
     )
 

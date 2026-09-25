@@ -16,7 +16,15 @@ class ChatRepository(ABC):
     async def get_session(self, session_id: str) -> ChatSession | None: ...
 
     @abstractmethod
-    async def add_message(self, session_id: str, role: str, content: str, intent: str | None) -> ChatMessage: ...
+    async def add_message(
+        self,
+        session_id: str,
+        role: str,
+        content: str,
+        intent: str | None,
+        content_blocks: list[dict] | None = None,
+        attachments: list[dict] | None = None,
+    ) -> ChatMessage: ...
 
     @abstractmethod
     async def list_messages(self, session_id: str) -> list[ChatMessage]: ...
@@ -44,8 +52,23 @@ class SqlChatRepository(ChatRepository):
     async def get_session(self, session_id: str) -> ChatSession | None:
         return await self._session.get(ChatSession, session_id)
 
-    async def add_message(self, session_id: str, role: str, content: str, intent: str | None = None) -> ChatMessage:
-        message = ChatMessage(session_id=session_id, role=role, content=content, intent=intent)
+    async def add_message(
+        self,
+        session_id: str,
+        role: str,
+        content: str,
+        intent: str | None = None,
+        content_blocks: list[dict] | None = None,
+        attachments: list[dict] | None = None,
+    ) -> ChatMessage:
+        message = ChatMessage(
+            session_id=session_id,
+            role=role,
+            content=content,
+            intent=intent,
+            content_blocks=content_blocks,
+            attachments=attachments,
+        )
         self._session.add(message)
         await self._session.commit()
         await self._session.refresh(message)

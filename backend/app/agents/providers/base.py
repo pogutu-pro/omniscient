@@ -35,6 +35,19 @@ class ToolCallProposal:
     arguments: dict = field(default_factory=dict)
 
 
+@dataclass
+class AttachmentContent:
+    """A file the student attached to their message, with its bytes
+    already read from storage so a vision-capable provider can embed them
+    directly (base64) — a remote LLM API can't fetch a local dev storage
+    URL, so the raw bytes have to travel in the request itself."""
+
+    filename: str
+    content_type: str
+    data: bytes
+    url: str
+
+
 class LLMProvider(ABC):
     #: Short, user-facing name shown in the execution trace (e.g. "Grok",
     #: "Claude", "DeepSeek"). Overridden by each concrete provider.
@@ -52,6 +65,13 @@ class LLMProvider(ABC):
 
     @abstractmethod
     def stream_final_answer(
-        self, *, message: str, intent: str, tool_results: list[dict], history: list[ChatTurn]
+        self,
+        *,
+        message: str,
+        intent: str,
+        tool_results: list[dict],
+        history: list[ChatTurn],
+        attachments: list[AttachmentContent] | None = None,
     ) -> AsyncIterator[str]:
-        """Stream the natural-language answer, grounded only in tool_results."""
+        """Stream the natural-language answer, grounded only in tool_results
+        (plus any attachments, for a provider that can actually see them)."""

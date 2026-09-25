@@ -29,3 +29,7 @@ class Hostel(Base, TimestampMixin):
     description: Mapped[str] = mapped_column(String(500), nullable=False, default="")
     contact_phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
     source: Mapped[str] = mapped_column(String(20), nullable=False, default="mock")
+    # Storage key for an admin-uploaded photo (via /api/files/upload), never
+    # a raw URL - HostelOut.image_url is computed from this the same way
+    # PastPaperOut.download_url is computed (see repositories/hostel_repository.py).
+    image_key: Mapped[str | None] = mapped_column(String(500), nullable=True)

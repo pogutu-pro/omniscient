@@ -21,7 +21,7 @@ class _FakeSettings:
 
 def _ctx(db_session: AsyncSession, student_id: str | None = None) -> ToolContext:
     return ToolContext(
-        hostel_repo=MockHostelRepository(db_session),
+        hostel_repo=MockHostelRepository(db_session, _FakeSettings()),
         academic_repo=SqlAcademicRepository(db_session),
         past_paper_repo=SqlPastPaperRepository(db_session, _FakeSettings()),
         complaint_repo=SqlComplaintRepository(db_session),
@@ -69,7 +69,10 @@ async def test_orchestrator_housing_flow_selects_search_hostels_tool(db_session:
     tool_results = [e for e in events if e.type == "tool_result"]
     assert tool_results[0].status == "completed"
     answer = "".join(e.message for e in events if e.type == "answer_chunk")
-    assert "Boma View Hostel" in answer
+    assert "hostel option" in answer
+    content_blocks = [e for e in events if e.type == "content_block"]
+    table_block = next(b for b in content_blocks if b.data["type"] == "table")
+    assert table_block.data["rows"][0]["name"] == "Boma View Hostel"
     done = [e for e in events if e.type == "done"][0]
     assert done.data["intent"] == "housing"
     assert done.data["preference_updates"]["housing_max_budget_ksh"] == 8000
