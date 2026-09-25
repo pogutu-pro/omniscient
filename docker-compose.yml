@@ -1,0 +1,54 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: omniscient
+      POSTGRES_PASSWORD: omniscient
+      POSTGRES_DB: omniscient
+    volumes:
+      - omniscient_db_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U omniscient -d omniscient"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://omniscient:omniscient@db:5432/omniscient
+      DATABASE_URL_SYNC: postgresql+psycopg2://omniscient:omniscient@db:5432/omniscient
+      STORAGE_LOCAL_PATH: /app/var/storage
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    volumes:
+      - omniscient_storage:/app/var/storage
+    command: >
+      sh -c "alembic upgrade head &&
+             python -m app.scripts_entry seed --if-empty &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000"
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: http://localhost:8000
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "5173:80"
+
+volumes:
+  omniscient_db_data:
+  omniscient_storage:

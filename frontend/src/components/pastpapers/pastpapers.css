@@ -1,0 +1,42 @@
+.paper-search {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.paper-search .input {
+  flex: 1;
+}
+
+.paper-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.paper-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.12s ease;
+}
+
+.paper-card:hover {
+  border-color: var(--color-brand);
+}
+
+.paper-card-body {
+  flex: 1;
+}
+
+.paper-card-title {
+  font-weight: var(--font-medium);
+}
+
+.paper-card-meta {
+  color: var(--color-text-tertiary);
+  font-size: var(--text-sm);
+  margin-top: 2px;
+  text-transform: capitalize;
+}

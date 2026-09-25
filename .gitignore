@@ -1,0 +1,48 @@
+# --- Environment / secrets ---
+.env
+.env.local
+.env.*.local
+.env.production
+*.pem
+*.key
+
+# --- Python / backend ---
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+.coverage.*
+dist/
+build/
+
+# --- Node / frontend ---
+node_modules/
+frontend/dist/
+frontend/build/
+.vite/
+*.local
+
+# --- Uploads / local object storage stand-in ---
+backend/var/uploads/
+backend/var/storage/
+
+# --- Editors / OS ---
+.vscode/
+.idea/
+.DS_Store
+*.swp
+
+# --- Docker ---
+*.pid
+
+# --- Logs ---
+*.log
+logs/

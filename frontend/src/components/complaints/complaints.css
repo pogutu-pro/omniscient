@@ -1,0 +1,40 @@
+.complaint-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  max-width: 480px;
+}
+
+.complaint-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.complaint-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.complaint-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.complaint-reference {
+  font-family: ui-monospace, monospace;
+  font-size: var(--text-sm);
+  color: var(--color-text-tertiary);
+}
+
+.complaint-details {
+  font-size: var(--text-sm);
+  color: var(--color-text-primary);
+}
+
+.complaint-location {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
