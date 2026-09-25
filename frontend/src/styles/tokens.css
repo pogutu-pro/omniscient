@@ -5,7 +5,10 @@
   Rumia's restrained green treatment, #16A34A, no indigo/violet/neon accents.
   Structural scales (spacing, radius, shadow, type) are otherwise generic
   and Claude-desktop/Antigravity-like: calm, light, spacious, border-led
-  rather than shadow-led.
+  rather than shadow-led. No dark theme is defined — the surface tokens
+  below express an elevation ladder within a single light theme
+  (app-bg < surface-subtle < surface < surface-hover), not a light/dark
+  toggle.
 */
 :root {
   /* Brand */
@@ -15,12 +18,12 @@
   --color-brand-soft: #f0fdf4;
   --color-brand-subtle: #dcfce7;
 
-  /* Backgrounds */
-  --color-background: #ffffff;
-  --color-surface: #ffffff;
-  --color-surface-subtle: #f8faf9;
-  --color-surface-hover: #f3f7f4;
+  /* Backgrounds (elevation ladder, lowest to highest) */
   --color-app-bg: #fafafa;
+  --color-surface-subtle: #f8faf9;
+  --color-surface: #ffffff;
+  --color-surface-hover: #f3f7f4;
+  --color-background: #ffffff;
 
   /* Text */
   --color-text-primary: #171717;
@@ -30,8 +33,12 @@
   --color-text-on-brand: #ffffff;
 
   /* Borders */
-  --color-border: #e5e7eb;
   --color-border-subtle: #f0f1f2;
+  --color-border: #e5e7eb;
+  /* Slightly more defined than --color-border: reserved for structural
+     shell lines (navbar/sidebar/panel boundaries) so the app frame reads
+     as one connected grid, distinct from component-level card borders. */
+  --color-border-strong: #d8dbe0;
   --color-border-focus: #16a34a;
 
   /* Semantic */
@@ -50,17 +57,19 @@
 
   /* Typography */
   --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --text-xs: 0.75rem;
-  --text-sm: 0.875rem;
-  --text-md: 1rem;
-  --text-lg: 1.125rem;
-  --text-xl: 1.25rem;
-  --text-2xl: 1.5rem;
-  --text-3xl: 1.875rem;
+  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace;
+  --text-xs: 0.75rem; /* 12px */
+  --text-sm: 0.8125rem; /* 13px */
+  --text-md: 0.9375rem; /* 15px */
+  --text-lg: 1.0625rem; /* 17px */
+  --text-xl: 1.25rem; /* 20px */
+  --text-2xl: 1.5rem; /* 24px */
   --font-regular: 400;
   --font-medium: 500;
   --font-semibold: 600;
-  --font-bold: 700;
+  --leading-tight: 1.25;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.65;
 
   /* Spacing (4px base) */
   --space-1: 4px;
@@ -81,18 +90,37 @@
   --radius-xl: 16px;
   --radius-full: 9999px;
 
-  /* Shadows (subtle, border-led design) */
+  /* Shadows (subtle, border-led design - used for floating/overlay
+     elements only, never for resting cards or the shell frame) */
   --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.04);
   --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.05);
   --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.08);
   --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.1);
 
+  /* Interactive states */
+  --focus-ring: 0 0 0 3px var(--color-brand-subtle);
+  --transition-fast: 0.12s ease;
+  --transition-base: 0.18s ease;
+
+  /* Component heights */
+  --control-height-sm: 36px;
+  --control-height-md: 44px;
+  /* Equal to --control-height-md - this is also the topbar's profile
+     touch target on mobile, so it never drops below the 44px minimum. */
+  --avatar-size: 44px;
+
   /* Layout */
   --sidebar-width: 224px;
-  --activity-width: 340px;
-  --topbar-height: 60px;
-  --bottom-nav-height: 64px;
+  --activity-width: 336px;
+  --topbar-height: 56px;
+  --bottom-nav-height: 60px;
+  --status-strip-height: 40px;
   --content-max-width: 720px;
+
+  /* Stacking */
+  --z-sticky-header: 20;
+  --z-bottom-nav: 30;
+  --z-overlay: 50;
 
   /* Safe areas (mobile) */
   --safe-top: env(safe-area-inset-top, 0px);

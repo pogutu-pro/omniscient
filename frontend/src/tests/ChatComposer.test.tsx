@@ -3,11 +3,18 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ChatComposer } from '../components/chat/ChatComposer';
 
+const baseProps = {
+  hasActivity: false,
+  isStreaming: false,
+  statusLabel: null,
+  onToggleActivity: vi.fn(),
+};
+
 describe('ChatComposer', () => {
   it('sends the trimmed message and clears the input on submit', async () => {
     const user = userEvent.setup();
     const onSend = vi.fn();
-    render(<ChatComposer onSend={onSend} disabled={false} hasActivity={false} onToggleActivity={vi.fn()} />);
+    render(<ChatComposer {...baseProps} onSend={onSend} disabled={false} />);
 
     const textarea = screen.getByLabelText('Message Omniscient');
     await user.type(textarea, '  Find me a hostel  ');
@@ -20,7 +27,7 @@ describe('ChatComposer', () => {
   it('submits on Enter but not on Shift+Enter', async () => {
     const user = userEvent.setup();
     const onSend = vi.fn();
-    render(<ChatComposer onSend={onSend} disabled={false} hasActivity={false} onToggleActivity={vi.fn()} />);
+    render(<ChatComposer {...baseProps} onSend={onSend} disabled={false} />);
 
     const textarea = screen.getByLabelText('Message Omniscient');
     await user.type(textarea, 'Hello');
@@ -32,17 +39,16 @@ describe('ChatComposer', () => {
   });
 
   it('disables the send button while streaming or when empty', () => {
-    render(<ChatComposer onSend={vi.fn()} disabled={true} hasActivity={false} onToggleActivity={vi.fn()} />);
+    render(<ChatComposer {...baseProps} onSend={vi.fn()} disabled={true} isStreaming={true} />);
     expect(screen.getByLabelText('Send message')).toBeDisabled();
   });
 
-  it('hides the mobile activity toggle until there is activity to show', () => {
-    const { rerender } = render(
-      <ChatComposer onSend={vi.fn()} disabled={false} hasActivity={false} onToggleActivity={vi.fn()} />,
-    );
-    expect(screen.queryByText('Activity')).not.toBeInTheDocument();
+  it('hides the mobile status strip until there is activity to show', () => {
+    const { rerender } = render(<ChatComposer {...baseProps} onSend={vi.fn()} disabled={false} />);
+    expect(screen.queryByLabelText('View activity details')).not.toBeInTheDocument();
 
-    rerender(<ChatComposer onSend={vi.fn()} disabled={false} hasActivity={true} onToggleActivity={vi.fn()} />);
-    expect(screen.getByText('Activity')).toBeInTheDocument();
+    rerender(<ChatComposer {...baseProps} onSend={vi.fn()} disabled={false} hasActivity={true} statusLabel="Checking hostel listings..." />);
+    expect(screen.getByLabelText('View activity details')).toBeInTheDocument();
+    expect(screen.getByText('Checking hostel listings...')).toBeInTheDocument();
   });
 });

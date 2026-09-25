@@ -31,7 +31,7 @@ omniscient/
   docker-compose.yml   Postgres + backend + frontend, for local or single-VM deployment
 ```
 
-See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full design, and [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for running this on Oracle Cloud.
+See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full design, [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for running this on Oracle Cloud, and [`docs/VERCEL_DEPLOYMENT.md`](docs/VERCEL_DEPLOYMENT.md) for Vercel (frontend) + Neon (database) + Railway/Render/Fly.io (backend).
 
 ## Quickstart (local development, no Docker)
 

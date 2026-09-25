@@ -1,15 +1,9 @@
-.chat-page {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-}
-
 .chat-column {
   flex: 1;
   min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  height: 100%;
 }
 
 .chat-scroll {
@@ -90,6 +84,53 @@
   50% {
     opacity: 0;
   }
+}
+
+.typing-indicator {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 1.6em;
+}
+
+.typing-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.typing-dots span {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: var(--color-text-muted);
+  animation: typing-bounce 1.3s ease-in-out infinite;
+}
+
+.typing-dots span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.typing-dots span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes typing-bounce {
+  0%,
+  60%,
+  100% {
+    opacity: 0.35;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+}
+
+.typing-slow-hint {
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
 }
 
 .chat-empty {
@@ -208,26 +249,58 @@
   cursor: not-allowed;
 }
 
-.activity-toggle-btn {
-  display: inline-flex;
+/* Mobile "contextual strip": a compact preview of what the right-hand
+   activity panel would show on desktop, sitting right above the composer
+   where it's noticed but never in the way. Tapping it opens the full
+   bottom-sheet drawer (ActivityPanel's mobile view). */
+.status-strip {
+  display: flex;
   align-items: center;
-  gap: 6px;
-  align-self: flex-start;
-  border: none;
-  background: none;
-  padding: 4px 2px;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 36px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-subtle);
   font-size: var(--text-xs);
-  font-weight: var(--font-medium);
-  color: var(--color-text-tertiary);
+  color: var(--color-text-secondary);
   cursor: pointer;
+  text-align: left;
 }
 
-.activity-toggle-btn:hover {
-  color: var(--color-text-primary);
+.status-strip:hover {
+  background: var(--color-surface-hover);
+}
+
+.status-strip-indicator {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+.status-strip-indicator.is-live {
+  background: var(--color-brand);
+  animation: pulse-dot 1.4s ease-in-out infinite;
+}
+
+.status-strip-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status-strip-chevron {
+  flex-shrink: 0;
+  color: var(--color-text-muted);
 }
 
 @media (min-width: 900px) {
-  .activity-toggle-btn {
+  .status-strip {
     display: none;
   }
 }
@@ -242,7 +315,7 @@
     display: flex;
     width: var(--activity-width);
     flex-shrink: 0;
-    border-left: 1px solid var(--color-border);
+    border-left: 1px solid var(--color-border-strong);
     background: var(--color-surface);
     flex-direction: column;
     animation: panel-slide-in 0.18s ease-out;
@@ -258,22 +331,6 @@
     opacity: 1;
     transform: translateX(0);
   }
-}
-
-.activity-panel-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  padding: var(--space-4);
-  border-bottom: 1px solid var(--color-border-subtle);
-}
-
-.activity-panel-header h2 {
-  font-size: var(--text-sm);
-  font-weight: var(--font-semibold);
-  color: var(--color-text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
 }
 
 .activity-panel-subtitle {
@@ -302,12 +359,6 @@
   50% {
     opacity: 0.3;
   }
-}
-
-.activity-panel-body {
-  flex: 1;
-  overflow-y: auto;
-  padding: var(--space-4);
 }
 
 .trace-list {
@@ -395,66 +446,3 @@
   font-family: ui-monospace, monospace;
 }
 
-@keyframes spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-/* ---------- Mobile activity drawer ---------- */
-.activity-drawer-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.32);
-  z-index: 50;
-  display: flex;
-  align-items: flex-end;
-  animation: overlay-fade-in 0.15s ease-out;
-}
-
-@keyframes overlay-fade-in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-@keyframes drawer-slide-up {
-  from {
-    transform: translateY(100%);
-  }
-  to {
-    transform: translateY(0);
-  }
-}
-
-@media (min-width: 900px) {
-  .activity-drawer-overlay {
-    display: none;
-  }
-}
-
-.activity-drawer {
-  width: 100%;
-  max-height: 72vh;
-  background: var(--color-surface);
-  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
-  display: flex;
-  flex-direction: column;
-  padding-bottom: var(--safe-bottom);
-  box-shadow: var(--shadow-lg);
-  animation: drawer-slide-up 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.activity-drawer-handle {
-  width: 36px;
-  height: 4px;
-  border-radius: var(--radius-full);
-  background: var(--color-border);
-  margin: var(--space-2) auto 0;
-}

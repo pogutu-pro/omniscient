@@ -8,11 +8,27 @@ const SUGGESTIONS = [
   'I want to report a broken water tap',
 ];
 
+function TypingIndicator({ isSlow }: { isSlow: boolean }) {
+  return (
+    <div className="typing-indicator">
+      <span className="typing-dots" aria-hidden="true">
+        <span />
+        <span />
+        <span />
+      </span>
+      <span className="visually-hidden">Omniscient is thinking</span>
+      {isSlow && <span className="typing-slow-hint">Still working on it...</span>}
+    </div>
+  );
+}
+
 export function MessageList({
   messages,
+  isSlow,
   onSuggestion,
 }: {
   messages: DisplayMessage[];
+  isSlow: boolean;
   onSuggestion: (text: string) => void;
 }) {
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -37,14 +53,21 @@ export function MessageList({
     );
   }
 
+  const lastId = messages[messages.length - 1]?.id;
+  // A failed request leaves its assistant row with no content and
+  // pending:false - the error banner + retry action already cover that
+  // turn, so skip rendering an empty bubble here rather than showing a
+  // blank row next to the avatar.
+  const visibleMessages = messages.filter((m) => m.pending || m.content || m.role === 'user');
+
   return (
     <div className="chat-scroll-inner">
-      {messages.map((message) => (
+      {visibleMessages.map((message) => (
         <div key={message.id} className={`message-row ${message.role}`}>
           {message.role === 'assistant' && <div className="message-avatar">O</div>}
           <div className="message-content">
             {message.pending && !message.content ? (
-              <span className="message-cursor" />
+              <TypingIndicator isSlow={isSlow && message.id === lastId} />
             ) : (
               <>
                 {message.content}

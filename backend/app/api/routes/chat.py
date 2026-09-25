@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -30,9 +31,20 @@ from app.tools.registry import ToolContext, ToolRegistry
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 logger = get_logger(component="chat_api")
 
+# How often to send a keep-alive comment frame while waiting on a slow
+# provider (or nothing new to report). SSE comment lines (": ...") are
+# invisible to EventSource/fetch readers that only look at "data:" lines,
+# but they keep intermediate proxies/load balancers from timing out an
+# idle-looking connection, and give the frontend a clear "still connected"
+# signal distinct from "the connection died".
+HEARTBEAT_SECONDS = 15
+
 
 def _sse(payload: dict) -> str:
     return f"data: {json.dumps(payload)}\n\n"
+
+
+_QUEUE_DONE = object()
 
 
 @router.post("", dependencies=[Depends(enforce_chat_rate_limit)])
@@ -72,28 +84,60 @@ async def chat(
 
         yield _sse({"type": "session", "session_id": chat_session.id})
 
-        try:
-            async for event in orchestrator.run(
-                message=payload.message,
-                history=history,
-                ctx=ctx,
-                registry=registry,
-                provider=provider,
-                remembered_preferences=remembered_preferences,
-            ):
-                event_dict = event.model_dump(exclude_none=True)
-                await chat_repo.add_trace_event(chat_session.id, user_message.id, event.type, event_dict)
+        # The orchestrator (and all DB writes for this request) run in a
+        # single background task feeding a queue, so this generator is
+        # free to emit heartbeat frames on a timer without ever touching
+        # `session_db` concurrently from two coroutines.
+        queue: asyncio.Queue = asyncio.Queue()
 
-                if event.type == "answer_chunk" and event.message:
-                    final_text_parts.append(event.message)
-                if event.type == "done" and event.data:
-                    final_intent = event.data.get("intent", final_intent)
-                    preference_updates = event.data.get("preference_updates") or {}
+        async def produce() -> None:
+            try:
+                async for event in orchestrator.run(
+                    message=payload.message,
+                    history=history,
+                    ctx=ctx,
+                    registry=registry,
+                    provider=provider,
+                    remembered_preferences=remembered_preferences,
+                ):
+                    event_dict = event.model_dump(exclude_none=True)
+                    await chat_repo.add_trace_event(chat_session.id, user_message.id, event.type, event_dict)
+                    await queue.put(event_dict)
+            except Exception:
+                logger.exception("chat_stream_failed", session_id=chat_session.id)
+                await queue.put(
+                    {"type": "error", "message": "Omniscient is temporarily unable to process that request."}
+                )
+            finally:
+                await queue.put(_QUEUE_DONE)
+
+        producer_task = asyncio.create_task(produce())
+
+        try:
+            while True:
+                try:
+                    event_dict = await asyncio.wait_for(queue.get(), timeout=HEARTBEAT_SECONDS)
+                except asyncio.TimeoutError:
+                    yield ": keep-alive\n\n"
+                    continue
+
+                if event_dict is _QUEUE_DONE:
+                    break
+
+                if event_dict.get("type") == "answer_chunk" and event_dict.get("message"):
+                    final_text_parts.append(event_dict["message"])
+                if event_dict.get("type") == "done" and event_dict.get("data"):
+                    final_intent = event_dict["data"].get("intent", final_intent)
+                    preference_updates = event_dict["data"].get("preference_updates") or {}
 
                 yield _sse(event_dict)
-        except Exception:
-            logger.exception("chat_stream_failed", session_id=chat_session.id)
-            yield _sse({"type": "error", "message": "Omniscient is temporarily unable to process that request."})
+        finally:
+            # Never leaves the producer running past the response: if the
+            # client disconnects mid-stream, this generator is closed and
+            # we cancel the background task rather than leaking it.
+            if not producer_task.done():
+                producer_task.cancel()
+            await asyncio.gather(producer_task, return_exceptions=True)
 
         final_text = "".join(final_text_parts).strip()
         if final_text:

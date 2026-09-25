@@ -22,10 +22,19 @@ class Settings(BaseSettings):
     secret_key: str = "insecure-development-key-change-me"
     access_token_expire_minutes: int = 60
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000"
+    # Matched in addition to cors_origins. Exists for hosts like Vercel that
+    # mint a new preview-deployment URL per branch/PR, so those don't need
+    # to be added to cors_origins by hand one at a time. Example:
+    # ^https://omniscient(-[a-z0-9-]+)?\.vercel\.app$
+    cors_origin_regex: str | None = None
 
     # --- Database ---
     database_url: str = "postgresql+asyncpg://omniscient:omniscient@localhost:5432/omniscient"
     database_url_sync: str = "postgresql+psycopg2://omniscient:omniscient@localhost:5432/omniscient"
+    # Off by default (local Postgres in dev/CI doesn't need it). Set to
+    # true for any managed Postgres that requires TLS - Neon, Supabase,
+    # RDS, etc.
+    database_ssl: bool = False
 
     # --- AI provider ---
     # "mock" needs no credentials and is the safe zero-config default.

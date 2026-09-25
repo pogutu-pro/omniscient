@@ -1,14 +1,16 @@
 import { useRef, useState, type KeyboardEvent } from 'react';
-import { ActivityIcon, SendIcon } from '../common/icons';
+import { ChevronUpIcon, SendIcon, SpinnerIcon } from '../common/icons';
 
 interface Props {
   onSend: (text: string) => void;
   disabled: boolean;
   hasActivity: boolean;
+  isStreaming: boolean;
+  statusLabel: string | null;
   onToggleActivity: () => void;
 }
 
-export function ChatComposer({ onSend, disabled, hasActivity, onToggleActivity }: Props) {
+export function ChatComposer({ onSend, disabled, hasActivity, isStreaming, statusLabel, onToggleActivity }: Props) {
   const [value, setValue] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -38,9 +40,10 @@ export function ChatComposer({ onSend, disabled, hasActivity, onToggleActivity }
     <div className="chat-composer-wrap">
       <div className="chat-composer-inner">
         {hasActivity && (
-          <button type="button" className="activity-toggle-btn" onClick={onToggleActivity}>
-            <ActivityIcon width={14} height={14} />
-            Activity
+          <button type="button" className="status-strip" onClick={onToggleActivity} aria-label="View activity details">
+            <span className={`status-strip-indicator${isStreaming ? ' is-live' : ''}`} aria-hidden="true" />
+            <span className="status-strip-text">{statusLabel ?? 'Activity'}</span>
+            <ChevronUpIcon width={14} height={14} className="status-strip-chevron" />
           </button>
         )}
         <div className="chat-composer">
@@ -57,7 +60,7 @@ export function ChatComposer({ onSend, disabled, hasActivity, onToggleActivity }
             aria-label="Message Omniscient"
           />
           <button type="button" className="chat-send-btn" onClick={submit} disabled={disabled || !value.trim()} aria-label="Send message">
-            <SendIcon />
+            {isStreaming ? <SpinnerIcon className="spin" /> : <SendIcon />}
           </button>
         </div>
       </div>

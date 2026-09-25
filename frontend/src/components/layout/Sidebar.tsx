@@ -23,11 +23,6 @@ export function Sidebar() {
 
   return (
     <aside className="sidebar">
-      <div className="sidebar-brand">
-        <span className="sidebar-brand-mark">O</span>
-        Omniscient
-      </div>
-
       <Link to="/" className={`sidebar-new-chat${isNewChatActive ? ' active' : ''}`}>
         <PlusIcon width={16} height={16} />
         New chat

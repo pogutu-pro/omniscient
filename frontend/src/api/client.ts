@@ -139,10 +139,26 @@ export async function fetchRecentSessions(): Promise<ChatSessionSummary[]> {
   return request<ChatSessionSummary[]>('/api/chat/sessions');
 }
 
+// The backend sends an SSE keep-alive comment roughly every 15s while a
+// slow provider is still working (see HEARTBEAT_SECONDS in
+// api/routes/chat.py). If we go this much longer with zero bytes of any
+// kind, the connection is genuinely dead (not just slow) - proxies can
+// swallow a stream without ever closing the socket - so we abort rather
+// than let the UI wait forever.
+const STREAM_IDLE_TIMEOUT_MS = 45_000;
+
+export interface StreamChatOptions {
+  /** Called on every SSE frame received, including keep-alive comments -
+   * i.e. "the connection is alive", independent of whether it carried a
+   * real event. Used to drive stall/slow-network UI. */
+  onActivity?: () => void;
+}
+
 export function streamChat(
   payload: { session_id?: string | null; message: string },
   onEvent: (event: TraceEvent) => void,
   signal?: AbortSignal,
+  options: StreamChatOptions = {},
 ): Promise<void> {
   const token = getToken();
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -162,7 +178,22 @@ export function streamChat(
     let buffer = '';
 
     while (true) {
-      const { done, value } = await reader.read();
+      let timeoutId: ReturnType<typeof setTimeout> | undefined;
+      const timeout = new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => reject(new ApiError(0, 'Connection timed out.')), STREAM_IDLE_TIMEOUT_MS);
+      });
+
+      let readResult: ReadableStreamReadResult<Uint8Array>;
+      try {
+        readResult = await Promise.race([reader.read(), timeout]);
+      } catch (err) {
+        reader.cancel().catch(() => {});
+        throw err;
+      } finally {
+        clearTimeout(timeoutId);
+      }
+
+      const { done, value } = readResult;
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
 
@@ -170,6 +201,7 @@ export function streamChat(
       while (boundary !== -1) {
         const rawEvent = buffer.slice(0, boundary);
         buffer = buffer.slice(boundary + 2);
+        options.onActivity?.();
         const line = rawEvent.split('\n').find((l) => l.startsWith('data: '));
         if (line) {
           try {

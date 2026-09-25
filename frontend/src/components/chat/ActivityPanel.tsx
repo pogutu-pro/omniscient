@@ -22,7 +22,7 @@ function PanelHeader({
   onClose?: () => void;
 }) {
   return (
-    <div className="activity-panel-header">
+    <div className="panel-header">
       <div>
         <h2>Activity</h2>
         {providerName && (
@@ -44,25 +44,25 @@ function PanelHeader({
 export function ActivityPanel({ events, isStreaming, isWriting, providerName, mobileOpen, onCloseMobile }: Props) {
   return (
     <>
-      <aside className="activity-panel activity-panel-desktop">
+      <aside className="activity-panel-desktop">
         <PanelHeader providerName={providerName} isStreaming={isStreaming} />
-        <div className="activity-panel-body">
+        <div className="panel-body">
           <ExecutionTrace events={events} isStreaming={isStreaming} isWriting={isWriting} />
         </div>
       </aside>
 
       {mobileOpen && (
-        <div className="activity-drawer-overlay" role="presentation" onClick={onCloseMobile}>
+        <div className="sheet-overlay" role="presentation" onClick={onCloseMobile}>
           <div
-            className="activity-drawer"
+            className="sheet-panel"
             role="dialog"
             aria-modal="true"
             aria-label="Execution activity"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="activity-drawer-handle" />
+            <div className="sheet-handle" />
             <PanelHeader providerName={providerName} isStreaming={isStreaming} onClose={onCloseMobile} />
-            <div className="activity-panel-body">
+            <div className="panel-body">
               <ExecutionTrace events={events} isStreaming={isStreaming} isWriting={isWriting} />
             </div>
           </div>

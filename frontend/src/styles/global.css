@@ -202,6 +202,30 @@ select {
 }
 
 /* ---------- Utility ---------- */
+.spin {
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Baseline focus-visible ring for elements that don't define their own
+   (buttons/inputs mostly do, via --focus-ring on box-shadow). Keeps
+   keyboard navigation legible everywhere without relying on the
+   browser's inconsistent default outline. */
+a:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
 .visually-hidden {
   position: absolute;
   width: 1px;
@@ -209,6 +233,85 @@ select {
   overflow: hidden;
   clip: rect(0 0 0 0);
   white-space: nowrap;
+}
+
+/* ---------- Bottom sheet (mobile) ----------
+   Shared by every mobile drawer in the product (chat activity, chat
+   history) so they all open, look, and dismiss the same way. */
+.sheet-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.32);
+  z-index: var(--z-overlay);
+  display: flex;
+  align-items: flex-end;
+  animation: sheet-overlay-in 0.15s ease-out;
+}
+
+@media (min-width: 900px) {
+  .sheet-overlay {
+    display: none;
+  }
+}
+
+.sheet-panel {
+  width: 100%;
+  max-height: 72vh;
+  background: var(--color-surface);
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: var(--safe-bottom);
+  box-shadow: var(--shadow-lg);
+  animation: sheet-panel-in 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.sheet-handle {
+  width: 36px;
+  height: 4px;
+  border-radius: var(--radius-full);
+  background: var(--color-border);
+  margin: var(--space-2) auto 0;
+}
+
+.panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.panel-header h2 {
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.panel-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-4);
+}
+
+@keyframes sheet-overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes sheet-panel-in {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
 }
 
 .skeleton {
@@ -242,6 +345,19 @@ select {
   background: var(--color-error-soft);
   color: var(--color-error);
   border-color: color-mix(in srgb, var(--color-error) 20%, transparent);
+}
+
+.inline-alert-action {
+  flex-shrink: 0;
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-weight: var(--font-semibold);
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
 }
 
 .empty-state {
