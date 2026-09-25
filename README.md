@@ -20,11 +20,11 @@ omniscient/
       core/            Config, security, logging, rate limiting
       db/              Session, base, seed data
     migrations/         Alembic migrations
-    tests/              pytest suite (46+ tests)
+    tests/              pytest suite (70+ tests)
   frontend/            React + TypeScript + Vite, mobile-first
     src/
       pages/            Route-level screens
-      components/       Layout, chat, housing, academics, past papers, complaints
+      components/       Layout, chat, housing, academics, past papers, complaints, admin
       api/client.ts      Typed API client + SSE streaming consumer
       context/           Auth context
   docs/                Architecture and deployment notes
@@ -62,6 +62,7 @@ uvicorn app.main:app --reload --port 8000
 Backend runs at `http://localhost:8000`. Health check: `GET /api/health`.
 
 Demo login: `jane.wanjiru@dekut.ac.ke` / `Passw0rd!`
+Demo admin login: `admin@dekut.ac.ke` / `AdminPass1!` (seeded with `is_admin=True` — see [Admin dashboard](#admin-dashboard) below).
 
 ### 3. Frontend
 ```bash
@@ -74,12 +75,23 @@ Frontend runs at `http://localhost:5173`.
 
 ### 4. Run tests
 ```bash
-# Backend (46 tests: repositories, tools, agent orchestration, API, streaming, auth)
+# Backend (70+ tests: repositories, tools, agent orchestration, API, streaming, auth, admin)
 cd backend && source .venv/bin/activate && pytest
 
 # Frontend (component + API-client tests)
 cd frontend && npm test
 ```
+
+## Admin dashboard
+
+`/admin` (linked from the sidebar for admin accounts only) lets an admin feed and correct every domain Omniscient answers from — hostels, programmes/courses/timetable/deadlines, past papers, and complaint status — through the exact same repositories the chat agent reads at answer time, so there is no separate "admin data path" that could drift from what the agent grounds its answers in. It also surfaces `/api/admin/insights`: real, already-captured usage signal (classified question topics, complaint category/status breakdowns) — the honest interpretation of "learning from users" here, not a claim that any model is being retrained.
+
+Authorization is enforced server-side against an `is_admin` flag on the `students` table, checked fresh from the database on every request — never anything a client or the LLM claims about itself. To promote an existing (already-registered) student to admin:
+```bash
+cd backend && source .venv/bin/activate
+python -m app.scripts_entry promote-admin some.student@dekut.ac.ke
+```
+The seeded demo dataset also ships one ready-made admin account (see the login above).
 
 ## Docker Compose
 

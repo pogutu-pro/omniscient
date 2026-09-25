@@ -74,6 +74,14 @@ Switching data sources is a configuration change (`RUMIA_DB_MODE`, `RUMIA_DATABA
 
 Academics, past papers, and complaints are Omniscient-owned data (there is no Rumia equivalent for them), so they have a single SQL-backed implementation each.
 
+## Admin dashboard
+
+`api/routes/admin.py` (`/api/admin/*`) exposes CRUD for every domain — hostels, programmes/courses/timetable/deadlines, past papers, complaint status — plus `GET /api/admin/insights`. Every route depends on `get_current_admin` (`api/deps.py`), which loads the authenticated student from the database and checks its `is_admin` column; nothing a client or the model claims about itself is ever trusted for this check.
+
+The routes call the same repository write methods the read-side tools already depend on (`HostelRepository.create/update/delete`, `AcademicRepository.create_course`, etc.), so admin-authored content is immediately what the chat agent grounds its answers in — there is no separate "admin data path" to keep in sync. `HostelRepository` write methods raise `HostelWriteNotSupported` on `RumiaPostgresHostelRepository`, since Rumia-backed housing data stays strictly read-only even from the admin surface.
+
+`InsightsOut` (`services/insights_service.py`) aggregates real, already-captured signal — `ChatMessage.intent` counts and complaint category/status counts — rather than fabricating a retraining claim; this is the honest interpretation of the brief's "learn from users" requirement.
+
 ## Personalization
 
 `services/personalization_service.py` stores a small, fixed set of fields on `Student.preferences` (housing budget/area today) — never an open-ended memory dump. `resolve_housing_preferences()` is the one function that decides what to use: an explicit value in the *current* message always wins over a remembered one, and the trace tells the student when a remembered preference was applied (e.g. "Using your usual budget of KSh 8,000 since none was given this time").
