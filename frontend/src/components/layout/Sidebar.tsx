@@ -1,9 +1,25 @@
-import { NavLink } from 'react-router-dom';
+import { Link, NavLink, useLocation, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { AcademicsIcon, ComplaintsIcon, HomeIcon, HousingIcon, LogoutIcon, PapersIcon, ProfileIcon } from '../common/icons';
+import { useRecentSessions } from '../../hooks/useRecentSessions';
+import {
+  AcademicsIcon,
+  ComplaintsIcon,
+  HousingIcon,
+  LogoutIcon,
+  MessageIcon,
+  PapersIcon,
+  PlusIcon,
+  ProfileIcon,
+} from '../common/icons';
 
 export function Sidebar() {
   const { student, logout } = useAuth();
+  const recentSessions = useRecentSessions(Boolean(student));
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+
+  const activeSessionId = location.pathname === '/' ? searchParams.get('session') : null;
+  const isNewChatActive = location.pathname === '/' && !activeSessionId;
 
   return (
     <aside className="sidebar">
@@ -12,11 +28,26 @@ export function Sidebar() {
         Omniscient
       </div>
 
-      <nav className="sidebar-group">
-        <NavLink to="/" end className={({ isActive }) => `sidebar-link${isActive ? ' active' : ''}`}>
-          <HomeIcon /> Home
-        </NavLink>
-      </nav>
+      <Link to="/" className={`sidebar-new-chat${isNewChatActive ? ' active' : ''}`}>
+        <PlusIcon width={16} height={16} />
+        New chat
+      </Link>
+
+      {student && recentSessions.length > 0 && (
+        <nav className="sidebar-group sidebar-recent">
+          <div className="sidebar-group-label">Recent</div>
+          {recentSessions.slice(0, 8).map((s) => (
+            <Link
+              key={s.id}
+              to={`/?session=${s.id}`}
+              className={`sidebar-link sidebar-recent-link${activeSessionId === s.id ? ' active' : ''}`}
+            >
+              <MessageIcon width={15} height={15} />
+              <span className="sidebar-recent-title">{s.title}</span>
+            </Link>
+          ))}
+        </nav>
+      )}
 
       <nav className="sidebar-group">
         <div className="sidebar-group-label">Explore</div>
@@ -44,7 +75,7 @@ export function Sidebar() {
             <NavLink to="/profile" className={({ isActive }) => `sidebar-link${isActive ? ' active' : ''}`}>
               <ProfileIcon /> {student.full_name.split(' ')[0]}
             </NavLink>
-            <button type="button" className="sidebar-link" onClick={logout} style={{ border: 'none', background: 'none', cursor: 'pointer', textAlign: 'left' }}>
+            <button type="button" className="sidebar-link sidebar-signout" onClick={logout}>
               <LogoutIcon /> Sign out
             </button>
           </>

@@ -26,6 +26,9 @@ class ChatRepository(ABC):
         self, session_id: str, message_id: str | None, event_type: str, payload: dict
     ) -> TraceEvent: ...
 
+    @abstractmethod
+    async def set_title(self, session_id: str, title: str) -> None: ...
+
 
 class SqlChatRepository(ChatRepository):
     def __init__(self, session: AsyncSession):
@@ -60,3 +63,10 @@ class SqlChatRepository(ChatRepository):
         self._session.add(event)
         await self._session.commit()
         return event
+
+    async def set_title(self, session_id: str, title: str) -> None:
+        chat_session = await self.get_session(session_id)
+        if not chat_session:
+            return
+        chat_session.title = title[:157] + "..." if len(title) > 160 else title
+        await self._session.commit()

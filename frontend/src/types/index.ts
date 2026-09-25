@@ -96,6 +96,13 @@ export interface ChatMessage {
   created_at: string;
 }
 
+export interface ChatSessionSummary {
+  id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface DisplayMessage {
   id: string;
   role: 'user' | 'assistant';

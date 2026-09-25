@@ -12,26 +12,30 @@ export function TopBar({ title }: { title: string }) {
         .slice(0, 2)
         .join('')
         .toUpperCase()
-    : '?';
+    : null;
 
   return (
     <header className="topbar">
       <div className="topbar-brand">
-        <span className="sidebar-brand-mark" style={{ width: 24, height: 24, fontSize: 12 }}>
-          O
-        </span>
+        <span className="sidebar-brand-mark topbar-brand-mark">O</span>
         Omniscient
       </div>
       <span className="topbar-title">{title}</span>
       <div className="topbar-actions">
-        <button
-          type="button"
-          className="avatar"
-          aria-label={student ? student.full_name : 'Sign in'}
-          onClick={() => navigate(student ? '/profile' : '/login')}
-        >
-          {initials}
-        </button>
+        {student ? (
+          <button
+            type="button"
+            className="avatar"
+            aria-label={`${student.full_name}, profile`}
+            onClick={() => navigate('/profile')}
+          >
+            {initials}
+          </button>
+        ) : (
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => navigate('/login')}>
+            Sign in
+          </button>
+        )}
       </div>
     </header>
   );

@@ -25,15 +25,22 @@ function stepLabel(event: TraceEvent): string {
   return event.message ?? '';
 }
 
-export function ExecutionTrace({ events, isStreaming }: { events: TraceEvent[]; isStreaming: boolean }) {
+export function ExecutionTrace({
+  events,
+  isStreaming,
+  isWriting,
+}: {
+  events: TraceEvent[];
+  isStreaming: boolean;
+  isWriting: boolean;
+}) {
   const visible = events.filter((e) => e.type !== 'answer_chunk' && e.type !== 'done');
+  const totalSteps = visible.length + (isStreaming ? 1 : 0);
 
-  if (visible.length === 0) {
+  if (visible.length === 0 && !isStreaming) {
     return (
       <div className="empty-state">
-        <p style={{ fontSize: 'var(--text-sm)' }}>
-          {isStreaming ? 'Getting started...' : 'Activity from your next message will appear here.'}
-        </p>
+        <p style={{ fontSize: 'var(--text-sm)' }}>Nothing running right now.</p>
       </div>
     );
   }
@@ -41,8 +48,8 @@ export function ExecutionTrace({ events, isStreaming }: { events: TraceEvent[]; 
   return (
     <ol className="trace-list">
       {visible.map((event, idx) => (
-        <li key={idx} className="trace-item">
-          {stepIcon(event)}
+        <li key={idx} className={`trace-item${idx < totalSteps - 1 ? ' has-connector' : ''}`}>
+          <span className="trace-icon-col">{stepIcon(event)}</span>
           <div className="trace-item-body">
             <p className="trace-item-label">{stepLabel(event)}</p>
             {event.type === 'tool_call' && event.tool ? <span className="trace-item-tool">{event.tool}</span> : null}
@@ -51,9 +58,11 @@ export function ExecutionTrace({ events, isStreaming }: { events: TraceEvent[]; 
       ))}
       {isStreaming && (
         <li className="trace-item">
-          <SpinnerIcon className="trace-icon trace-icon-running" />
+          <span className="trace-icon-col">
+            <SpinnerIcon className="trace-icon trace-icon-running" />
+          </span>
           <div className="trace-item-body">
-            <p className="trace-item-label">Writing a response...</p>
+            <p className="trace-item-label">{isWriting ? 'Writing a response...' : 'Getting started...'}</p>
           </div>
         </li>
       )}

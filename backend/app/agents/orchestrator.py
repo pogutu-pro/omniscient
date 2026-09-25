@@ -60,7 +60,9 @@ async def run(
     result = OrchestratorResult()
     remembered_preferences = remembered_preferences or {}
 
-    yield TraceEventOut(type="status", message="Reading your message...")
+    yield TraceEventOut(
+        type="status", message="Reading your message...", data={"provider": provider.display_name}
+    )
 
     try:
         intent_result: IntentResult = await router.classify(provider, message, history)
@@ -113,7 +115,7 @@ async def run(
         proposals = []
 
     if not proposals:
-        yield TraceEventOut(type="error", message="I couldn't determine how to help with that — could you rephrase?")
+        yield TraceEventOut(type="error", message="I couldn't determine how to help with that. Could you rephrase?")
         yield TraceEventOut(type="done", data={"intent": intent_result.intent, "preference_updates": {}})
         return
 

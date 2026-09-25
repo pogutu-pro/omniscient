@@ -88,6 +88,8 @@ def _extract_complaint_category(message: str) -> str:
 
 
 class MockProvider(LLMProvider):
+    display_name = "Mock Assistant"
+
     async def classify_intent(self, message: str, history: list[ChatTurn], domains: list[str]) -> dict:
         scores = {
             "housing": _score(message, _HOUSING_KEYWORDS),
@@ -191,7 +193,7 @@ def _compose_answer(intent: str, tool_results: list[dict]) -> str:
     if tool_name == "search_hostels":
         hostels = data or []
         if not hostels:
-            return "I couldn't find any hostels matching that budget and area — try widening your search."
+            return "I couldn't find any hostels matching that budget and area. Try widening your search."
         lines = [f"I found {len(hostels)} hostel option(s) for you:"]
         for h in hostels[:5]:
             verified = "verified" if h["verified"] else "unverified demo listing"
@@ -217,7 +219,7 @@ def _compose_answer(intent: str, tool_results: list[dict]) -> str:
     if tool_name == "search_past_papers":
         papers = data or []
         if not papers:
-            return "I couldn't find past papers matching that search — try the unit code or name."
+            return "I couldn't find past papers matching that search. Try the unit code or name."
         lines = [f"I found {len(papers)} past paper(s):"]
         for p in papers[:5]:
             lines.append(f"- {p['course_code']} {p['course_name']}, {p['academic_year']} semester {p['semester']} ({p['exam_type']}).")

@@ -38,6 +38,8 @@ _SAFE_SYSTEM_PROMPT = (
 
 
 class AnthropicProvider(LLMProvider):
+    display_name = "Claude (Anthropic)"
+
     def __init__(self, api_key: str, model: str, temperature: float = 0.2, base_url: str | None = None):
         try:
             from anthropic import AsyncAnthropic

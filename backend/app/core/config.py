@@ -28,10 +28,16 @@ class Settings(BaseSettings):
     database_url_sync: str = "postgresql+psycopg2://omniscient:omniscient@localhost:5432/omniscient"
 
     # --- AI provider ---
-    llm_provider: Literal["mock", "anthropic"] = "mock"
+    # "mock" needs no credentials and is the safe zero-config default.
+    # "grok" (xAI) is the intended primary real provider; "openai",
+    # "deepseek", "anthropic" and "custom" (any other OpenAI-compatible
+    # endpoint — Groq, Together, Mistral, ...) are drop-in alternatives.
+    # Switching providers is a config change only: see
+    # agents/providers/factory.py.
+    llm_provider: Literal["mock", "anthropic", "openai", "grok", "deepseek", "custom"] = "mock"
     llm_model: str = "claude-sonnet-5"
     llm_api_key: str | None = None
-    llm_api_base: str | None = None
+    llm_api_base: str | None = None  # required for "custom"; optional override for the rest
     llm_temperature: float = 0.2
 
     # --- Rumia integration boundary ---
@@ -54,6 +60,13 @@ class Settings(BaseSettings):
     @field_validator("app_env")
     @classmethod
     def _validate_secret_in_prod(cls, v: str) -> str:
+        return v
+
+    @field_validator("llm_api_base")
+    @classmethod
+    def _require_api_base_for_custom_provider(cls, v: str | None, info) -> str | None:
+        if info.data.get("llm_provider") == "custom" and not v:
+            raise ValueError("LLM_API_BASE is required when LLM_PROVIDER=custom")
         return v
 
     @property

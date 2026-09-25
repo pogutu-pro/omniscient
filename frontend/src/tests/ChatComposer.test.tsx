@@ -7,7 +7,7 @@ describe('ChatComposer', () => {
   it('sends the trimmed message and clears the input on submit', async () => {
     const user = userEvent.setup();
     const onSend = vi.fn();
-    render(<ChatComposer onSend={onSend} disabled={false} onToggleActivity={vi.fn()} activityCount={0} />);
+    render(<ChatComposer onSend={onSend} disabled={false} hasActivity={false} onToggleActivity={vi.fn()} />);
 
     const textarea = screen.getByLabelText('Message Omniscient');
     await user.type(textarea, '  Find me a hostel  ');
@@ -20,7 +20,7 @@ describe('ChatComposer', () => {
   it('submits on Enter but not on Shift+Enter', async () => {
     const user = userEvent.setup();
     const onSend = vi.fn();
-    render(<ChatComposer onSend={onSend} disabled={false} onToggleActivity={vi.fn()} activityCount={0} />);
+    render(<ChatComposer onSend={onSend} disabled={false} hasActivity={false} onToggleActivity={vi.fn()} />);
 
     const textarea = screen.getByLabelText('Message Omniscient');
     await user.type(textarea, 'Hello');
@@ -32,12 +32,17 @@ describe('ChatComposer', () => {
   });
 
   it('disables the send button while streaming or when empty', () => {
-    render(<ChatComposer onSend={vi.fn()} disabled={true} onToggleActivity={vi.fn()} activityCount={0} />);
+    render(<ChatComposer onSend={vi.fn()} disabled={true} hasActivity={false} onToggleActivity={vi.fn()} />);
     expect(screen.getByLabelText('Send message')).toBeDisabled();
   });
 
-  it('shows the activity count on the mobile toggle button', () => {
-    render(<ChatComposer onSend={vi.fn()} disabled={false} onToggleActivity={vi.fn()} activityCount={3} />);
-    expect(screen.getByText('Activity (3)')).toBeInTheDocument();
+  it('hides the mobile activity toggle until there is activity to show', () => {
+    const { rerender } = render(
+      <ChatComposer onSend={vi.fn()} disabled={false} hasActivity={false} onToggleActivity={vi.fn()} />,
+    );
+    expect(screen.queryByText('Activity')).not.toBeInTheDocument();
+
+    rerender(<ChatComposer onSend={vi.fn()} disabled={false} hasActivity={true} onToggleActivity={vi.fn()} />);
+    expect(screen.getByText('Activity')).toBeInTheDocument();
   });
 });

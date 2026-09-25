@@ -55,6 +55,7 @@ async def chat(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chat session not found")
     else:
         chat_session = await chat_repo.create_session(student.id if student else None)
+        await chat_repo.set_title(chat_session.id, payload.message.strip())
 
     history_messages = await chat_repo.list_messages(chat_session.id)
     history = [ChatTurn(role=m.role, content=m.content) for m in history_messages]

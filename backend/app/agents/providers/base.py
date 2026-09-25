@@ -36,6 +36,10 @@ class ToolCallProposal:
 
 
 class LLMProvider(ABC):
+    #: Short, user-facing name shown in the execution trace (e.g. "Grok",
+    #: "Claude", "DeepSeek"). Overridden by each concrete provider.
+    display_name: str = "Assistant"
+
     @abstractmethod
     async def classify_intent(self, message: str, history: list[ChatTurn], domains: list[str]) -> dict:
         """Return a raw dict shaped like IntentResult. The router validates it."""

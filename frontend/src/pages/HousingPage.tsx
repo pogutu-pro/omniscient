@@ -37,7 +37,7 @@ export function HousingPage() {
       <div className="page-container">
         <div className="page-header">
           <h1>Housing near DeKUT</h1>
-          <p>Demo listings for Nyeri — filter by budget, area, and verification status.</p>
+          <p>Demo listings for Nyeri. Filter by budget, area, and verification status.</p>
         </div>
 
         <HostelFilters value={filters} onChange={setFilters} />

@@ -4,11 +4,11 @@ import { ActivityIcon, SendIcon } from '../common/icons';
 interface Props {
   onSend: (text: string) => void;
   disabled: boolean;
+  hasActivity: boolean;
   onToggleActivity: () => void;
-  activityCount: number;
 }
 
-export function ChatComposer({ onSend, disabled, onToggleActivity, activityCount }: Props) {
+export function ChatComposer({ onSend, disabled, hasActivity, onToggleActivity }: Props) {
   const [value, setValue] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -36,16 +36,18 @@ export function ChatComposer({ onSend, disabled, onToggleActivity, activityCount
 
   return (
     <div className="chat-composer-wrap">
-      <div style={{ width: '100%', maxWidth: 'var(--content-max-width)', display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <button type="button" className="btn btn-ghost btn-sm activity-toggle activity-toggle-btn" onClick={onToggleActivity} style={{ alignSelf: 'flex-start' }}>
-          <ActivityIcon />
-          Activity{activityCount > 0 ? ` (${activityCount})` : ''}
-        </button>
+      <div className="chat-composer-inner">
+        {hasActivity && (
+          <button type="button" className="activity-toggle-btn" onClick={onToggleActivity}>
+            <ActivityIcon width={14} height={14} />
+            Activity
+          </button>
+        )}
         <div className="chat-composer">
           <textarea
             ref={textareaRef}
             value={value}
-            placeholder="Ask Omniscient anything about campus life..."
+            placeholder="Message Omniscient..."
             onChange={(e) => {
               setValue(e.target.value);
               autoGrow();

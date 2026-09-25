@@ -227,6 +227,23 @@ select {
   }
 }
 
+.inline-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: 10px var(--space-3);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  border: 1px solid transparent;
+}
+
+.inline-alert-error {
+  background: var(--color-error-soft);
+  color: var(--color-error);
+  border-color: color-mix(in srgb, var(--color-error) 20%, transparent);
+}
+
 .empty-state {
   display: flex;
   flex-direction: column;

@@ -25,10 +25,7 @@ export function MessageList({
     return (
       <div className="chat-empty">
         <h1>What can I help with?</h1>
-        <p>
-          I'm Omniscient — your campus workspace for housing, timetables, past papers, and complaints at DeKUT.
-          Ask me anything, or try one of these:
-        </p>
+        <p>Housing, timetables, past papers, and complaints at DeKUT. Ask a question, or try one of these.</p>
         <div className="suggestion-grid">
           {SUGGESTIONS.map((s) => (
             <button key={s} type="button" className="suggestion-card" onClick={() => onSuggestion(s)}>

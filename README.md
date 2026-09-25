@@ -93,7 +93,7 @@ This starts PostgreSQL, runs migrations + seed data, then the backend (`:8000`) 
 
 Omniscient never requires a live LLM credential to work. `LLM_PROVIDER=mock` (the default) uses a deterministic, offline provider that performs real intent classification, parameter extraction, and tool selection using rules tuned for DeKUT student messages — the whole agent pipeline (router → tools → streamed trace → grounded answer) works end-to-end without any API key.
 
-Set `LLM_PROVIDER=anthropic`, `LLM_MODEL`, and `LLM_API_KEY` to use a real Claude model via native tool-use instead. Both providers implement the exact same interface (`app/agents/providers/base.py`), so nothing else in the app changes.
+Set `LLM_PROVIDER` to `grok` (xAI, the intended primary provider), `deepseek`, `openai`, `anthropic`, or `custom` (any other OpenAI-compatible endpoint) plus `LLM_MODEL`/`LLM_API_KEY` to use a real model instead. Every provider implements the exact same interface (`app/agents/providers/base.py`), so switching — or adding a sixth provider later — never touches application code, only `.env`. See `docs/ARCHITECTURE.md` for how `grok`/`deepseek`/`openai`/`custom` all share one `OpenAICompatibleProvider` implementation.
 
 ## Rumia integration boundary
 

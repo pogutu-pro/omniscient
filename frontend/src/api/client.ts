@@ -2,6 +2,7 @@ import type {
   AcademicDeadline,
   AuthResponse,
   ChatMessage,
+  ChatSessionSummary,
   Complaint,
   Hostel,
   PastPaper,
@@ -132,6 +133,10 @@ export const complaintsApi = {
 // --- Chat ---
 export async function fetchSessionMessages(sessionId: string): Promise<ChatMessage[]> {
   return request<ChatMessage[]>(`/api/chat/sessions/${sessionId}/messages`);
+}
+
+export async function fetchRecentSessions(): Promise<ChatSessionSummary[]> {
+  return request<ChatSessionSummary[]>('/api/chat/sessions');
 }
 
 export function streamChat(

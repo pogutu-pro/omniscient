@@ -99,9 +99,7 @@ export function RegisterPage() {
         </div>
 
         {error && (
-          <div className="badge badge-error" style={{ width: '100%', justifyContent: 'flex-start', padding: '8px 12px' }}>
-            {error}
-          </div>
+          <div className="inline-alert inline-alert-error">{error}</div>
         )}
 
         <button type="submit" className="btn btn-primary" disabled={submitting} style={{ width: '100%' }}>
