@@ -91,6 +91,38 @@ def test_plain_text_is_accepted_and_normalised():
     assert "Fourier" in pages[0].text
 
 
+def _docx_bytes(paragraphs: list[str]) -> bytes:
+    import io
+    import zipfile
+
+    body = "".join(f"<w:p><w:r><w:t>{text}</w:t></w:r></w:p>" for text in paragraphs)
+    document = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+        f"<w:body>{body}</w:body></w:document>"
+    )
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("word/document.xml", document)
+    return buffer.getvalue()
+
+
+def test_docx_text_is_extracted_for_indexing():
+    data = _docx_bytes(
+        ["SCS 2101 Database Systems - End of Semester Examination"] * 5
+        + ["Question 1: Explain normalisation and its normal forms in detail."] * 5
+    )
+    pages = extract_pages(data, filename="SCS2101_2023.docx")
+    assert len(pages) == 1
+    assert "Database Systems" in pages[0].text
+    assert "normalisation" in pages[0].text
+
+
+def test_a_docx_with_no_usable_text_is_rejected_rather_than_indexed_empty():
+    with pytest.raises(DocumentExtractionError):
+        extract_pages(_docx_bytes(["", "   "]), filename="empty.docx")
+
+
 # --- Embedding service ---
 
 

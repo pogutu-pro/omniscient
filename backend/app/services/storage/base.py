@@ -11,8 +11,11 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
+DOCX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
 ALLOWED_CONTENT_TYPES = {
     "application/pdf",
+    DOCX_CONTENT_TYPE,
     "image/png",
     "image/jpeg",
     "image/webp",

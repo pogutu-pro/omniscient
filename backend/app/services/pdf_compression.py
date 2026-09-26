@@ -159,3 +159,67 @@ def compress_pdf(content: bytes) -> bytes:
         compressed_bytes=len(compressed),
     )
     return compressed
+
+
+# --- Word documents ---------------------------------------------------------
+#
+# A .docx is a zip, so it is already compressed and re-deflating it rarely
+# buys much. It is still worth doing: writers that store images without
+# compression, or leave stale revision parts behind, produce files that a
+# fresh zip shrinks noticeably, and the same "keep the original unless it
+# actually got smaller" rule applies.
+
+_OFFICE_CONTENT_TYPES = {
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+}
+
+
+def _looks_like_docx(content: bytes, filename: str) -> bool:
+    if filename.lower().endswith(".docx"):
+        return True
+    return content[:2] == b"PK" and b"word/document.xml" in content
+
+
+def _recompress_zip(content: bytes) -> bytes | None:
+    import io
+    import zipfile
+
+    try:
+        with zipfile.ZipFile(io.BytesIO(content)) as source:
+            buffer = io.BytesIO()
+            with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as target:
+                for item in source.infolist():
+                    target.writestr(item, source.read(item.filename))
+            return buffer.getvalue()
+    except (zipfile.BadZipFile, OSError) as exc:
+        logger.warning("docx_compression_failed", error=str(exc))
+        return None
+
+
+def compress_docx(content: bytes) -> bytes:
+    """Return a smaller DOCX, or the original when re-zipping is not a win."""
+    if not content or not _looks_like_docx(content, "") or len(content) < _MIN_BYTES:
+        return content
+
+    recompressed = _recompress_zip(content)
+    if recompressed is None or len(recompressed) >= len(content) * (1 - _MIN_SAVING):
+        return content
+
+    logger.info(
+        "docx_compressed",
+        original_bytes=len(content),
+        compressed_bytes=len(recompressed),
+    )
+    return recompressed
+
+
+def compress_upload(content: bytes, *, filename: str = "", content_type: str = "") -> bytes:
+    """Dispatch on the file type. Anything unrecognised is returned as-is."""
+    lowered_type = (content_type or "").lower()
+    lowered_name = (filename or "").lower()
+
+    if lowered_type == "application/pdf" or lowered_name.endswith(".pdf") or content[:5] == b"%PDF-":
+        return compress_pdf(content)
+    if lowered_type in _OFFICE_CONTENT_TYPES or lowered_name.endswith(".docx") or _looks_like_docx(content, filename):
+        return compress_docx(content)
+    return content

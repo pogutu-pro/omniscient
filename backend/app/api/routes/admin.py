@@ -234,9 +234,28 @@ async def import_timetable_file(
 # --- Past papers ---
 @router.post("/past-papers", response_model=PastPaperOut, status_code=status.HTTP_201_CREATED)
 async def create_past_paper(
-    data: PastPaperCreate, repo: PastPaperRepository = Depends(get_past_paper_repo)
+    data: PastPaperCreate,
+    repo: PastPaperRepository = Depends(get_past_paper_repo),
+    storage: StorageBackend = Depends(get_storage_dep),
+    settings: Settings = Depends(get_settings_dep),
 ) -> PastPaperOut:
-    return await repo.create(data)
+    paper = await repo.create(data)
+
+    # Index the paper on upload so a freshly added paper is retrievable in
+    # chat without a separate "rebuild the index" step — that is the whole
+    # point of adding it. Best-effort: if a reindex is already running this
+    # is refused by the single-slot guard and the paper is picked up by the
+    # next run (the admin button, or `reindex-past-papers`).
+    if settings.embedding_enabled:
+
+        async def index_new_paper():
+            async for session in get_db():
+                service = PaperIndexService(session, storage, EmbeddingService(settings), settings)
+                return await service.reindex_all(paper_ids=[paper.id], concurrency=1)
+
+        start_reindex(index_new_paper)
+
+    return paper
 
 
 @router.delete("/past-papers/{paper_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)

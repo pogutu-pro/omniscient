@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile, sta
 from app.api.deps import get_current_student, get_settings_dep
 from app.core.config import Settings
 from app.models.student import Student
-from app.services.pdf_compression import compress_pdf
+from app.services.pdf_compression import compress_upload
 from app.services.storage.base import UploadRejected, validate_upload
 from app.services.storage.factory import get_storage_backend
 
@@ -34,15 +34,16 @@ async def upload_attachment(
     except UploadRejected as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
 
-    # Shrink PDFs before they reach R2. This is the one choke point every
-    # past paper goes through; ghostscript is CPU-bound, so it runs off the
-    # event loop. A no-op when ghostscript is absent or the PDF is already
-    # small (see services/pdf_compression.py).
-    is_pdf = (file.content_type or "").lower() == "application/pdf" or (file.filename or "").lower().endswith(
-        ".pdf"
+    # Shrink the file before it reaches R2. This is the one choke point every
+    # past paper goes through; ghostscript and zlib are CPU-bound, so they run
+    # off the event loop. A no-op when the file is already small or cannot be
+    # improved (see services/pdf_compression.py).
+    content = await asyncio.to_thread(
+        compress_upload,
+        content,
+        filename=file.filename or "",
+        content_type=file.content_type or "",
     )
-    if is_pdf:
-        content = await asyncio.to_thread(compress_pdf, content)
 
     storage = get_storage_backend(settings)
     extension = (file.filename or "").rsplit(".", 1)[-1] if "." in (file.filename or "") else "bin"

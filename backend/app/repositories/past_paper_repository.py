@@ -25,6 +25,22 @@ class PastPaperRepository(ABC):
     async def delete(self, paper_id: str) -> bool: ...
 
 
+def _download_url(paper: PastPaper, settings: Settings) -> str:
+    """Where a browser should fetch the PDF from.
+
+    When the object lives in R2 and a public base URL is configured, link
+    straight at Cloudflare. That is the whole point of R2 here: its egress
+    is free, while the API download route would stream every paper out of
+    the instance's limited block/egress budget. Local storage has no public
+    address, so it keeps the API route, which reads the file through the
+    storage backend.
+    """
+    public = (getattr(settings, "s3_public_url", None) or "").rstrip("/")
+    if getattr(settings, "storage_provider", "local") == "s3" and public:
+        return f"{public}/{paper.file_reference}"
+    return f"{settings.api_url}/api/past-papers/{paper.id}/download"
+
+
 def _to_out(paper: PastPaper, course: Course, settings: Settings) -> PastPaperOut:
     return PastPaperOut(
         id=paper.id,
@@ -37,7 +53,7 @@ def _to_out(paper: PastPaper, course: Course, settings: Settings) -> PastPaperOu
         exam_type=paper.exam_type,
         file_name=paper.file_name,
         file_reference=paper.file_reference,
-        download_url=f"{settings.api_url}/api/past-papers/{paper.id}/download",
+        download_url=_download_url(paper, settings),
     )
 
 

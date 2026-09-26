@@ -49,6 +49,54 @@ def _normalise(raw: str) -> str:
     return _BLANK_LINES.sub("\n\n", text).strip()
 
 
+_DOCX_MAIN_NS = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+
+
+def _is_docx(data: bytes, filename: str) -> bool:
+    """A .docx is a zip whose `word/document.xml` holds the text.
+
+    The extension is the primary signal; the zip-magic-plus-member check
+    catches a correctly-typed upload whose filename was lost.
+    """
+    if filename.lower().endswith(".docx"):
+        return True
+    return data[:2] == b"PK" and b"word/document.xml" in data
+
+
+def _extract_docx_text(data: bytes, filename: str) -> str:
+    """Pull paragraph text out of a Word document using only the stdlib.
+
+    python-docx would be another dependency for something the OOXML format
+    makes trivial: the words are `<w:t>` runs inside `<w:p>` paragraphs in
+    one zipped XML part. Joining the runs per paragraph preserves line
+    breaks so the chunker sees sentences, not one line of a whole paper.
+    """
+    import io
+    import zipfile
+    import xml.etree.ElementTree as ET
+
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as archive:
+            document = archive.read("word/document.xml")
+    except (zipfile.BadZipFile, KeyError, OSError) as exc:
+        raise DocumentExtractionError(
+            f"{filename or 'DOCX'} is not a readable Word document ({exc})."
+        ) from exc
+
+    try:
+        root = ET.fromstring(document)
+    except ET.ParseError as exc:
+        raise DocumentExtractionError(
+            f"{filename or 'DOCX'} has malformed document XML and could not be read."
+        ) from exc
+
+    lines: list[str] = []
+    for paragraph in root.iter(f"{_DOCX_MAIN_NS}p"):
+        text = "".join(run.text or "" for run in paragraph.iter(f"{_DOCX_MAIN_NS}t"))
+        lines.append(text)
+    return "\n".join(lines)
+
+
 def extract_pages(data: bytes, filename: str = "") -> list[Page]:
     """Extract per-page text from PDF bytes, or pass plain text through.
 
@@ -82,6 +130,8 @@ def extract_pages(data: bytes, filename: str = "") -> list[Page]:
                 "or corrupt — re-export or re-scan it. If it opens fine in a normal PDF viewer "
                 "but fails here, send it to a maintainer: that is a parser gap, not a bad file."
             ) from exc
+    elif _is_docx(data, filename):
+        pages = [Page(number=1, text=_normalise(_extract_docx_text(data, filename)))]
     else:
         pages = [Page(number=1, text=_normalise(data.decode("utf-8", errors="replace")))]
 

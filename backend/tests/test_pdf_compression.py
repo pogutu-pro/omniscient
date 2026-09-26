@@ -8,7 +8,7 @@ here — but every degradation path is covered.
 """
 from __future__ import annotations
 
-from app.services.pdf_compression import compress_pdf
+from app.services.pdf_compression import compress_docx, compress_pdf, compress_upload
 
 
 def test_non_pdf_is_returned_unchanged():
@@ -31,3 +31,28 @@ def test_unreadable_pdf_is_returned_byte_for_byte():
 
 def test_empty_input_is_a_no_op():
     assert compress_pdf(b"") == b""
+
+
+def _small_docx() -> bytes:
+    import io
+    import zipfile
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("word/document.xml", "<w:document><w:body/></w:document>")
+    return buffer.getvalue()
+
+
+def test_undersized_docx_is_unchanged():
+    data = _small_docx()
+    assert compress_docx(data) == data
+
+
+def test_dispatcher_routes_by_content_type_and_extension():
+    # Unknown types pass through untouched.
+    assert compress_upload(b"plain text", filename="notes.txt", content_type="text/plain") == b"plain text"
+    # A small docx goes to the docx path, which is a no-op at this size.
+    data = _small_docx()
+    content_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    assert compress_upload(data, filename="paper.docx", content_type=content_type) == data
+

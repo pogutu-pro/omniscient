@@ -269,13 +269,13 @@ export function PastPapersPanel() {
             </select>
           </div>
           <div className="field" style={{ gridColumn: '1 / -1' }}>
-            <label htmlFor="paper-file">PDF file (max 10 MB)</label>
+            <label htmlFor="paper-file">PDF or Word file (max 10 MB)</label>
             <input
               id="paper-file"
               ref={fileInputRef}
               className="input"
               type="file"
-              accept="application/pdf"
+              accept="application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
               onChange={(e) => setFile(e.target.files?.[0] ?? null)}
             />
           </div>
