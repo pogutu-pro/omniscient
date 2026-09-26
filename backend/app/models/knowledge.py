@@ -132,7 +132,7 @@ class KnowledgeSection(Base, TimestampMixin):
     )
     # "1" for a top-level heading, "1.1" for a subsection.
     number: Mapped[str] = mapped_column(sa.String(12), nullable=False)
-    sort_key: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0)
+    sort_key: Mapped[int] = mapped_column(sa.BigInteger, nullable=False, default=0)
     title: Mapped[str] = mapped_column(sa.String(300), nullable=False, default="")
     body: Mapped[str] = mapped_column(sa.Text, nullable=False, default="")
     # Lowercased, punctuation-stripped title + body. Precomputed at write
