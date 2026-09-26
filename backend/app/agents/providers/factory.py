@@ -75,6 +75,7 @@ def _build_one(
         base_url=base_url,
         display_name=PROVIDER_DISPLAY_NAMES.get(provider_name, provider_name.title()),
         temperature=temperature,
+        provider_name=provider_name,
     )
 
 

@@ -56,7 +56,7 @@ _SAFE_SYSTEM_PROMPT = (
 
 
 class OpenAICompatibleProvider(LLMProvider):
-    def __init__(self, *, api_key: str, model: str, base_url: str, display_name: str, temperature: float = 0.2):
+    def __init__(self, *, api_key: str, model: str, base_url: str, display_name: str, temperature: float = 0.2, provider_name: str | None = None):
         try:
             from openai import AsyncOpenAI
         except ImportError as exc:  # pragma: no cover
@@ -67,6 +67,16 @@ class OpenAICompatibleProvider(LLMProvider):
         self._model = model
         self._temperature = temperature
         self.display_name = display_name
+        # DeepSeek's reasoning ("thinking") models reject a forced
+        # tool_choice with HTTP 400 ("Thinking mode does not support this
+        # tool_choice"). Classification and tool selection must pin a
+        # function, so thinking is switched off for exactly those two calls
+        # with reasoning_effort="none"; the free-form answer call keeps
+        # thinking, which is where it helps.
+        self._pin_tool_calls = provider_name == "deepseek"
+
+    def _tool_pinning_body(self) -> dict:
+        return {"reasoning_effort": "none"} if self._pin_tool_calls else {}
 
     def _history_messages(self, history: list[ChatTurn]) -> list[dict]:
         return [{"role": t.role, "content": t.content} for t in history[-10:]]
@@ -83,6 +93,7 @@ class OpenAICompatibleProvider(LLMProvider):
                 ],
                 tools=[{"type": "function", "function": _INTENT_FUNCTION}],
                 tool_choice={"type": "function", "function": {"name": "classify_intent"}},
+                extra_body=self._tool_pinning_body(),
             )
         except Exception as exc:
             raise ProviderUnavailable(f"{self.display_name} classify_intent call failed: {exc}") from exc
@@ -119,6 +130,7 @@ class OpenAICompatibleProvider(LLMProvider):
                     {"role": "user", "content": prompt},
                 ],
                 tools=functions,
+                extra_body=self._tool_pinning_body(),
             )
         except Exception as exc:
             raise ProviderUnavailable(f"{self.display_name} propose_tool_calls call failed: {exc}") from exc
