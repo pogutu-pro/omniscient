@@ -108,6 +108,11 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     steps:
+      # The SSH action uploads `script_path` from the checked-out
+      # workspace, so the repository has to be present on the runner even
+      # though nothing here is built.
+      - uses: actions/checkout@v4
+
       - name: Configure SSH
         uses: appleboy/ssh-action@v1
         with:
@@ -127,6 +132,13 @@ jobs:
           # makes several ssh calls and re-authenticating for each one
           # is both slow and a chance to hit MaxStartups.
           args: "-o ServerAliveInterval=30"
+        env:
+          # Wire the tags resolved by the publish job into the remote
+          # environment. Without this, deploy.sh fails its `:?` guards
+          # because IMAGE_TAG et al. are unset.
+          IMAGE_TAG: ${{ needs.publish.outputs.backend_tag }}
+          BACKEND_IMAGE: ghcr.io/${{ github.repository_owner }}/omniscient-backend:${{ needs.publish.outputs.backend_tag }}
+          FRONTEND_IMAGE: ghcr.io/${{ github.repository_owner }}/omniscient-frontend:${{ needs.publish.outputs.frontend_tag }}
 
   # 3. Tell the world. Only after a successful rollout, so a failed
   #    deploy never announces itself as a release.
