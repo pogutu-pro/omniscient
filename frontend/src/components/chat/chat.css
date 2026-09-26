@@ -59,6 +59,50 @@
   padding-top: 3px;
 }
 
+/* Light markdown rendering of assistant prose (MessageText). Spacing is set
+   here so paragraphs, lists and headings sit evenly instead of inheriting
+   the browser's default margins. */
+.message-content .md-para {
+  margin: 0;
+}
+
+.message-content .md-para + .md-para,
+.message-content .md-para + .md-list,
+.message-content .md-list + .md-para,
+.message-content .md-list + .md-list,
+.message-content .md-para + .md-heading,
+.message-content .md-list + .md-heading,
+.message-content .md-heading + .md-para {
+  margin-top: var(--space-3);
+}
+
+.message-content .md-heading {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+
+.message-content .md-list {
+  margin: 0;
+  padding-left: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.message-content .md-list li {
+  margin: 0;
+}
+
+.message-content .md-code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  background: var(--color-surface-subtle);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 1px 5px;
+}
+
 .message-intent-badge {
   display: inline-block;
   margin-bottom: var(--space-2);
