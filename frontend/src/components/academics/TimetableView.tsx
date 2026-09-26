@@ -2,6 +2,22 @@ import type { TimetableEntry } from '../../types';
 
 const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
+/** JS's `Date.getDay()` is 0=Sunday..6=Saturday; this list is 0=Monday..6=Sunday. */
+function todayIndex(): number {
+  const jsDay = new Date().getDay();
+  return jsDay === 0 ? 6 : jsDay - 1;
+}
+
+/** "HH:MM", comparable lexically against the "HH:MM" strings the API
+ *  already sends for start_time/end_time. */
+function nowHHMM(): string {
+  return new Date().toTimeString().slice(0, 5);
+}
+
+function isHappeningNow(entry: TimetableEntry, now: string): boolean {
+  return entry.start_time <= now && now < entry.end_time;
+}
+
 interface TimetableViewProps {
   entries: TimetableEntry[];
   selectedCohort?: string;
@@ -45,15 +61,22 @@ export function TimetableView({ entries, selectedCohort, onClearFilters }: Timet
     }
   };
 
+  const today = todayIndex();
+  const now = nowHHMM();
+
   return (
     <div className="timetable">
       {days.map((day) => {
         const dayEntries = byDay.get(day)!.sort((a, b) => a.start_time.localeCompare(b.start_time));
+        const isToday = day === today;
 
         return (
-          <div key={day} className="timetable-day">
+          <div key={day} className={`timetable-day${isToday ? ' is-today' : ''}`}>
             <div className="timetable-day-header">
-              <h3>{DAY_NAMES[day]}</h3>
+              <h3>
+                {DAY_NAMES[day]}
+                {isToday && <span className="timetable-today-badge">Today</span>}
+              </h3>
               <span className="timetable-day-count">{dayEntries.length} {dayEntries.length === 1 ? 'class' : 'classes'}</span>
             </div>
             <div className="timetable-entries">
@@ -61,13 +84,19 @@ export function TimetableView({ entries, selectedCohort, onClearFilters }: Timet
                 const cohortLabel = [entry.year_group ? `Year ${entry.year_group}` : '', entry.stream]
                   .filter(Boolean)
                   .join(' · ');
+                const happeningNow = isToday && isHappeningNow(entry, now);
 
                 return (
-                  <div key={entry.id} className="card timetable-entry">
+                  <div key={entry.id} className={`card timetable-entry${happeningNow ? ' is-now' : ''}`}>
                     <div className="timetable-entry-time">
                       <span className="time-range">
                         {entry.start_time} – {entry.end_time}
                       </span>
+                      {happeningNow && (
+                        <span className="timetable-now-badge">
+                          <span className="timetable-now-dot" /> Now
+                        </span>
+                      )}
                       {cohortLabel && <span className="timetable-entry-cohort">{cohortLabel}</span>}
                     </div>
                     <div className="timetable-entry-body">
