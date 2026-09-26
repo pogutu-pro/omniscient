@@ -1,16 +1,22 @@
 import { useEffect, useRef } from 'react';
 import type { Attachment, ContentBlock, DisplayMessage } from '../../types';
 import { BrandLogo } from '../common/BrandLogo';
+import { AcademicsIcon, ComplaintsIcon, HousingIcon, PapersIcon } from '../common/icons';
 import { BlockRenderer } from './blocks/BlockRenderer';
 import { MessageText } from './MessageText';
 import { MessageActions } from './MessageActions';
 import { SuggestionRow } from './SuggestionRow';
 
+// The label is a short prompt for the tile; `question` is the full sentence
+// actually sent when it's chosen — the same split SuggestionRow already uses
+// for follow-ups (see suggestions.ts), so a two-column grid on a phone shows
+// a short, evenly-aligned label instead of a whole sentence wrapping onto
+// three or four lines.
 const SUGGESTIONS = [
-  'Find me a hostel under KSh 8,000 near Boma',
-  'What classes do I have tomorrow?',
-  'Find Database Systems past papers',
-  'I want to report a broken water tap',
+  { id: 'housing', icon: HousingIcon, label: 'Find a hostel', question: 'Find me a hostel under KSh 8,000 near Boma' },
+  { id: 'academics', icon: AcademicsIcon, label: "Tomorrow's classes", question: 'What classes do I have tomorrow?' },
+  { id: 'papers', icon: PapersIcon, label: 'Past papers', question: 'Find Database Systems past papers' },
+  { id: 'complaints', icon: ComplaintsIcon, label: 'Report an issue', question: 'I want to report a broken water tap' },
 ];
 
 function attachmentsToBlocks(attachments: Attachment[]): ContentBlock[] {
@@ -68,8 +74,9 @@ export function MessageList({
         <p>Housing, timetables, past papers, and complaints at DeKUT. Ask a question, or try one of these.</p>
         <div className="suggestion-grid">
           {SUGGESTIONS.map((s) => (
-            <button key={s} type="button" className="suggestion-card" onClick={() => onSuggestion(s)}>
-              {s}
+            <button key={s.id} type="button" className="suggestion-card" onClick={() => onSuggestion(s.question)}>
+              <s.icon className="suggestion-card-icon" />
+              <span className="suggestion-card-label">{s.label}</span>
             </button>
           ))}
         </div>

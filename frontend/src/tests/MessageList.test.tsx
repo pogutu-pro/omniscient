@@ -11,7 +11,8 @@ describe('MessageList', () => {
     render(<MessageList messages={[]} isSlow={false} isStreaming={false} onSuggestion={onSuggestion} onRate={vi.fn()} />);
 
     expect(screen.getByText('What can I help with?')).toBeInTheDocument();
-    const suggestion = screen.getByText('Find me a hostel under KSh 8,000 near Boma');
+    // The tile shows a short label; the full question is what's actually sent.
+    const suggestion = screen.getByText('Find a hostel');
     await user.click(suggestion);
     expect(onSuggestion).toHaveBeenCalledWith('Find me a hostel under KSh 8,000 near Boma');
   });
