@@ -129,7 +129,37 @@ async def run(
         )
 
     if intent_result.intent == "general":
-        async for chunk in _stream_answer(provider, message, intent_result.intent, [], history):
+        # General is where "what can you do?" and campus facts ("how do I
+        # pay fees?") land, and neither has a domain tool of its own. Run
+        # the campus knowledge lookup here, but attach it only when it
+        # actually matched - so a greeting or a service question is answered
+        # conversationally instead of being told the dataset had no match.
+        general_tool_results: list[dict] = []
+        if registry.get("search_campus_knowledge") is not None:
+            started = time.perf_counter()
+            tool_result = await registry.call("search_campus_knowledge", {"query": message}, ctx)
+            elapsed_ms = int((time.perf_counter() - started) * 1000)
+            data = tool_result.data if isinstance(tool_result.data, dict) else {}
+            if tool_result.ok and data.get("matched"):
+                general_tool_results.append(
+                    {"tool": "search_campus_knowledge", "ok": True, "data": data, "summary": tool_result.summary}
+                )
+                yield TraceEventOut(
+                    type="tool_call",
+                    tool="search_campus_knowledge",
+                    status="running",
+                    message="Checking campus knowledge...",
+                    arguments={"query": message[:_MAX_ARG_VALUE_CHARS]},
+                )
+                yield TraceEventOut(
+                    type="tool_result",
+                    tool="search_campus_knowledge",
+                    status="completed",
+                    summary=tool_result.summary,
+                    duration_ms=elapsed_ms,
+                )
+
+        async for chunk in _stream_answer(provider, message, intent_result.intent, general_tool_results, history):
             yield chunk
         yield TraceEventOut(type="done", data={"intent": "general", "preference_updates": {}})
         return

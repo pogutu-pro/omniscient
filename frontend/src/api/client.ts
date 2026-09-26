@@ -309,6 +309,18 @@ export const adminApi = {
     file_reference: string;
     file_name: string;
   }) => request<PastPaper>('/api/admin/past-papers', { method: 'POST', body: JSON.stringify(data) }),
+  updatePastPaper: (
+    id: string,
+    data: {
+      course_id?: string;
+      programme_id?: string;
+      academic_year?: string;
+      semester?: number;
+      exam_type?: string;
+      file_reference?: string;
+      file_name?: string;
+    }
+  ) => request<PastPaper>(`/api/admin/past-papers/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deletePastPaper: (id: string) => request<void>(`/api/admin/past-papers/${id}`, { method: 'DELETE' }),
 
   // Rebuilds the past-paper vector index. Returns as soon as the job is

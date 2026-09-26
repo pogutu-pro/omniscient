@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 
 from app.api.deps import get_hostel_repo
 from app.repositories.hostel_repository import HostelRepository, RumiaUnavailable
@@ -8,9 +8,18 @@ from app.schemas.housing import HostelAreasOut, HostelOut, HostelSearchParams
 
 router = APIRouter(prefix="/api/housing", tags=["housing"])
 
+# Housing listings change slowly and are identical for every visitor, so a
+# browser (or an intermediary) may reuse the response for a short while and
+# revalidate in the background afterwards. This is what makes returning to
+# the Housing page feel instant instead of paying a fresh round trip (and,
+# on a cold cache, a multi-second Rumia fetch) every time.
+_LISTINGS_CACHE = "public, max-age=60, stale-while-revalidate=600"
+_AREAS_CACHE = "public, max-age=300, stale-while-revalidate=3600"
+
 
 @router.get("/areas", response_model=HostelAreasOut)
-async def list_areas(repo: HostelRepository = Depends(get_hostel_repo)) -> HostelAreasOut:
+async def list_areas(response: Response, repo: HostelRepository = Depends(get_hostel_repo)) -> HostelAreasOut:
+    response.headers["Cache-Control"] = _AREAS_CACHE
     try:
         return HostelAreasOut(areas=await repo.areas())
     except RumiaUnavailable as exc:
@@ -22,6 +31,7 @@ async def list_areas(repo: HostelRepository = Depends(get_hostel_repo)) -> Hoste
 
 @router.get("/hostels", response_model=list[HostelOut])
 async def search_hostels(
+    response: Response,
     max_budget_ksh: int | None = Query(default=None, ge=0),
     min_budget_ksh: int | None = Query(default=None, ge=0),
     area: str | None = Query(default=None),
@@ -30,6 +40,7 @@ async def search_hostels(
     limit: int = Query(default=20, ge=1, le=50),
     repo: HostelRepository = Depends(get_hostel_repo),
 ) -> list[HostelOut]:
+    response.headers["Cache-Control"] = _LISTINGS_CACHE
     params = HostelSearchParams(
         max_budget_ksh=max_budget_ksh,
         min_budget_ksh=min_budget_ksh,
@@ -51,7 +62,10 @@ async def search_hostels(
 
 
 @router.get("/hostels/{hostel_id}", response_model=HostelOut)
-async def get_hostel(hostel_id: str, repo: HostelRepository = Depends(get_hostel_repo)) -> HostelOut:
+async def get_hostel(
+    hostel_id: str, response: Response, repo: HostelRepository = Depends(get_hostel_repo)
+) -> HostelOut:
+    response.headers["Cache-Control"] = _LISTINGS_CACHE
     try:
         hostel = await repo.get_by_id(hostel_id)
     except RumiaUnavailable as exc:

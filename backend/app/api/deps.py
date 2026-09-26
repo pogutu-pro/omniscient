@@ -139,8 +139,11 @@ async def get_tool_context(
     past_paper_repo: PastPaperRepository = Depends(get_past_paper_repo),
     complaint_repo: ComplaintRepository = Depends(get_complaint_repo),
     paper_search: PaperSearchService = Depends(get_paper_search_service),
+    session_db: AsyncSession = Depends(get_db_session),
     student: Student | None = Depends(get_optional_student),
 ) -> ToolContext:
+    from app.repositories.knowledge_repository import SqlKnowledgeRepository
+
     return ToolContext(
         hostel_repo=hostel_repo,
         academic_repo=academic_repo,
@@ -148,4 +151,5 @@ async def get_tool_context(
         complaint_repo=complaint_repo,
         student_id=student.id if student else None,
         paper_search=paper_search,
+        knowledge_repo=SqlKnowledgeRepository(session_db),
     )

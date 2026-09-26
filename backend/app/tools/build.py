@@ -7,6 +7,7 @@ from app.tools.academic_tools import (
 )
 from app.tools.complaint_tools import file_complaint_tool, get_complaint_status_tool
 from app.tools.housing_tools import get_hostel_tool, search_hostels_tool
+from app.tools.knowledge_tools import search_campus_knowledge_tool
 from app.tools.past_paper_tools import get_past_paper_tool, search_past_papers_tool
 from app.tools.rag_tools import search_paper_content_tool
 from app.tools.registry import ToolRegistry
@@ -23,6 +24,7 @@ def build_default_registry() -> ToolRegistry:
         search_past_papers_tool,
         get_past_paper_tool,
         search_paper_content_tool,
+        search_campus_knowledge_tool,
         file_complaint_tool,
         get_complaint_status_tool,
     ):

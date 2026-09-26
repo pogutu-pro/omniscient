@@ -52,7 +52,7 @@ from app.schemas.academics import (
 from app.schemas.complaint import ALLOWED_STATUSES, ComplaintOut
 from app.schemas.housing import HostelCreate, HostelOut, HostelUpdate
 from app.schemas.insights import InsightsOut
-from app.schemas.past_paper import PastPaperCreate, PastPaperOut
+from app.schemas.past_paper import PastPaperCreate, PastPaperOut, PastPaperUpdate
 from app.schemas.rag_admin import ReindexAccepted, ReindexRequest, ReindexStatus
 from app.services.embedding_service import EmbeddingService
 from app.services.insights_service import build_insights
@@ -254,6 +254,36 @@ async def create_past_paper(
                 return await service.reindex_all(paper_ids=[paper.id], concurrency=1)
 
         start_reindex(index_new_paper)
+
+    return paper
+
+
+@router.put("/past-papers/{paper_id}", response_model=PastPaperOut)
+async def update_past_paper(
+    paper_id: str,
+    data: PastPaperUpdate,
+    repo: PastPaperRepository = Depends(get_past_paper_repo),
+    storage: StorageBackend = Depends(get_storage_dep),
+    settings: Settings = Depends(get_settings_dep),
+) -> PastPaperOut:
+    """Correct a past paper's metadata, or attach a replaced file.
+
+    Rebuilds the paper's index afterwards: if the file changed, the stored
+    chunks describe text that is no longer in the paper, and search would
+    keep quoting a document nobody can see.
+    """
+    paper = await repo.update(paper_id, data)
+    if paper is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Past paper not found")
+
+    if settings.embedding_enabled:
+
+        async def reindex_edited_paper():
+            async for session in get_db():
+                service = PaperIndexService(session, storage, EmbeddingService(settings), settings)
+                return await service.reindex_all(paper_ids=[paper.id], concurrency=1)
+
+        start_reindex(reindex_edited_paper)
 
     return paper
 

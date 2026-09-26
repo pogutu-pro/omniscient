@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings
 from app.models.academics import Course, Programme
 from app.models.past_paper import PastPaper
-from app.schemas.past_paper import PastPaperCreate, PastPaperOut, PastPaperSearchParams
+from app.schemas.past_paper import PastPaperCreate, PastPaperOut, PastPaperSearchParams, PastPaperUpdate
 
 
 class PastPaperRepository(ABC):
@@ -20,6 +20,9 @@ class PastPaperRepository(ABC):
 
     @abstractmethod
     async def create(self, data: PastPaperCreate) -> PastPaperOut: ...
+
+    @abstractmethod
+    async def update(self, paper_id: str, data: PastPaperUpdate) -> PastPaperOut | None: ...
 
     @abstractmethod
     async def delete(self, paper_id: str) -> bool: ...
@@ -91,6 +94,19 @@ class SqlPastPaperRepository(PastPaperRepository):
     async def create(self, data: PastPaperCreate) -> PastPaperOut:
         paper = PastPaper(**data.model_dump())
         self._session.add(paper)
+        await self._session.commit()
+        await self._session.refresh(paper)
+        course = await self._session.get(Course, paper.course_id)
+        return _to_out(paper, course, self._settings)
+
+    async def update(self, paper_id: str, data: PastPaperUpdate) -> PastPaperOut | None:
+        paper = await self._session.get(PastPaper, paper_id)
+        if not paper:
+            return None
+        # exclude_unset: a partial body changes only the fields it names, so
+        # an edit of the exam type cannot blank the academic year.
+        for field, value in data.model_dump(exclude_unset=True).items():
+            setattr(paper, field, value)
         await self._session.commit()
         await self._session.refresh(paper)
         course = await self._session.get(Course, paper.course_id)

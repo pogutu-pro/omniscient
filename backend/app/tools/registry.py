@@ -26,6 +26,7 @@ from pydantic import BaseModel
 from app.repositories.academic_repository import AcademicRepository
 from app.repositories.complaint_repository import ComplaintRepository
 from app.repositories.hostel_repository import HostelRepository
+from app.repositories.knowledge_repository import KnowledgeRepository
 from app.repositories.past_paper_repository import PastPaperRepository
 from app.services.paper_search_service import PaperSearchService
 
@@ -52,6 +53,10 @@ class ToolContext:
     complaint_repo: ComplaintRepository
     student_id: str | None = None
     paper_search: PaperSearchService | None = None
+    # The DeKUT campus knowledge base (fees, offices, contacts, procedures).
+    # Optional so a context built without it still works; the knowledge tool
+    # reports "not loaded" rather than the agent failing to answer.
+    knowledge_repo: KnowledgeRepository | None = None
 
     def require_student(self) -> str:
         if not self.student_id:

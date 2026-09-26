@@ -27,6 +27,7 @@ import {
   MapPin,
   MessageSquare,
   Paperclip,
+  Pencil,
   Plus,
   RefreshCw,
   Send,
@@ -68,6 +69,7 @@ export const ChevronUpIcon = withDefaults(ChevronUp);
 export const AdminIcon = withDefaults(ShieldCheck);
 export const InsightsIcon = withDefaults(BarChart3);
 export const TrashIcon = withDefaults(Trash2);
+export const EditIcon = withDefaults(Pencil);
 export const UploadIcon = withDefaults(Upload);
 export const RefreshIcon = withDefaults(RefreshCw);
 export const DownloadIcon = withDefaults(Download);

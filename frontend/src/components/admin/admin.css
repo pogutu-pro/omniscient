@@ -128,6 +128,12 @@
   border-bottom: none;
 }
 
+/* The row currently loaded into the edit form, so it is obvious which
+   record "Save changes" will update. */
+.admin-table tbody tr.admin-row-editing {
+  background: var(--color-surface-subtle);
+}
+
 .admin-table td.admin-table-wrap-cell {
   white-space: normal;
   max-width: 320px;

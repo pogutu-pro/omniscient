@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { adminApi, pastPapersApi, uploadFile } from '../../api/client';
 import type { Course, PastPaper, ReindexStatus } from '../../types';
-import { RefreshIcon, TrashIcon, UploadIcon } from '../common/icons';
+import { CheckIcon, EditIcon, RefreshIcon, TrashIcon, UploadIcon } from '../common/icons';
 
 /** How often to poll while a reindex is in flight. */
 const REINDEX_POLL_MS = 4000;
@@ -73,7 +73,8 @@ function ReindexControls() {
       <h2 style={{ marginBottom: 'var(--space-3)' }}>Searchable past papers</h2>
       <p style={{ color: 'var(--text-muted)', marginBottom: 'var(--space-4)' }}>
         Past papers are read as text and indexed so students can search them by meaning, not just by
-        course code. Indexing is a background job; the page below refreshes itself while it runs.
+        course code. A paper is indexed automatically when it is added or edited; this button rebuilds
+        the whole library.
       </p>
 
       <div className="admin-form-grid">
@@ -159,6 +160,7 @@ export function PastPapersPanel() {
   const [semester, setSemester] = useState('1');
   const [examType, setExamType] = useState('main');
   const [file, setFile] = useState<File | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -176,6 +178,31 @@ export function PastPapersPanel() {
 
   useEffect(load, []);
 
+  const clearFileInput = () => {
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const resetForm = () => {
+    setEditingId(null);
+    setAcademicYear('');
+    setSemester('1');
+    setExamType('main');
+    setFile(null);
+    clearFileInput();
+    setError(null);
+  };
+
+  const startEdit = (paper: PastPaper) => {
+    setEditingId(paper.id);
+    setCourseId(paper.course_id);
+    setAcademicYear(paper.academic_year);
+    setSemester(String(paper.semester));
+    setExamType(paper.exam_type);
+    setFile(null);
+    clearFileInput();
+    setError(null);
+  };
+
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     setError(null);
@@ -184,8 +211,8 @@ export function PastPapersPanel() {
       setError('Choose a course first.');
       return;
     }
-    if (!file) {
-      setError('Choose a PDF file to upload.');
+    if (!editingId && !file) {
+      setError('Choose a PDF or Word file to upload.');
       return;
     }
     if (!/^\d{4}(\/\d{4})?$/.test(academicYear)) {
@@ -194,22 +221,34 @@ export function PastPapersPanel() {
     }
     setSaving(true);
     try {
-      const uploaded = await uploadFile(file);
-      await adminApi.createPastPaper({
-        course_id: course.id,
-        programme_id: course.programme_id,
-        academic_year: academicYear,
-        semester: Number(semester),
-        exam_type: examType,
-        file_reference: uploaded.key,
-        file_name: file.name,
-      });
-      setAcademicYear('');
-      setFile(null);
-      if (fileInputRef.current) fileInputRef.current.value = '';
+      if (editingId) {
+        // The file is optional on an edit: a replacement is uploaded and
+        // attached, otherwise the existing file is left in place.
+        const attachment = file ? await uploadFile(file) : null;
+        await adminApi.updatePastPaper(editingId, {
+          course_id: course.id,
+          programme_id: course.programme_id,
+          academic_year: academicYear,
+          semester: Number(semester),
+          exam_type: examType,
+          ...(attachment ? { file_reference: attachment.key, file_name: file!.name } : {}),
+        });
+      } else {
+        const uploaded = await uploadFile(file!);
+        await adminApi.createPastPaper({
+          course_id: course.id,
+          programme_id: course.programme_id,
+          academic_year: academicYear,
+          semester: Number(semester),
+          exam_type: examType,
+          file_reference: uploaded.key,
+          file_name: file!.name,
+        });
+      }
+      resetForm();
       load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not upload past paper.');
+      setError(err instanceof Error ? err.message : 'Could not save past paper.');
     } finally {
       setSaving(false);
     }
@@ -217,6 +256,7 @@ export function PastPapersPanel() {
 
   const handleDelete = async (id: string) => {
     await adminApi.deletePastPaper(id);
+    if (editingId === id) resetForm();
     load();
   };
 
@@ -225,7 +265,7 @@ export function PastPapersPanel() {
       <ReindexControls />
 
       <form className="card" onSubmit={handleSubmit}>
-        <h2 style={{ marginBottom: 'var(--space-4)' }}>Upload a past paper</h2>
+        <h2 style={{ marginBottom: 'var(--space-4)' }}>{editingId ? 'Edit past paper' : 'Upload a past paper'}</h2>
         <div className="admin-form-grid">
           <div className="field">
             <label htmlFor="paper-course">Course</label>
@@ -269,7 +309,9 @@ export function PastPapersPanel() {
             </select>
           </div>
           <div className="field" style={{ gridColumn: '1 / -1' }}>
-            <label htmlFor="paper-file">PDF or Word file (max 10 MB)</label>
+            <label htmlFor="paper-file">
+              {editingId ? 'Replace file (optional) — PDF or Word, max 10 MB' : 'PDF or Word file (max 10 MB)'}
+            </label>
             <input
               id="paper-file"
               ref={fileInputRef}
@@ -282,9 +324,14 @@ export function PastPapersPanel() {
           {error && <div className="inline-alert inline-alert-error" style={{ gridColumn: '1 / -1' }}>{error}</div>}
           <div className="admin-form-actions">
             <button type="submit" className="btn btn-primary" disabled={saving}>
-              <UploadIcon size={16} />
-              {saving ? 'Uploading...' : 'Upload'}
+              {editingId ? <CheckIcon size={16} /> : <UploadIcon size={16} />}
+              {saving ? 'Saving...' : editingId ? 'Save changes' : 'Upload'}
             </button>
+            {editingId && (
+              <button type="button" className="btn" onClick={resetForm} disabled={saving}>
+                Cancel
+              </button>
+            )}
           </div>
         </div>
       </form>
@@ -306,7 +353,7 @@ export function PastPapersPanel() {
             </thead>
             <tbody>
               {papers.map((p) => (
-                <tr key={p.id}>
+                <tr key={p.id} className={editingId === p.id ? 'admin-row-editing' : undefined}>
                   <td>{p.course_code}</td>
                   <td>{p.academic_year}</td>
                   <td>{p.semester}</td>
@@ -314,6 +361,14 @@ export function PastPapersPanel() {
                   <td>{p.file_name}</td>
                   <td>
                     <div className="admin-table-actions">
+                      <button
+                        type="button"
+                        className="admin-icon-btn"
+                        aria-label={`Edit ${p.file_name}`}
+                        onClick={() => startEdit(p)}
+                      >
+                        <EditIcon size={15} />
+                      </button>
                       <button
                         type="button"
                         className="admin-icon-btn"
