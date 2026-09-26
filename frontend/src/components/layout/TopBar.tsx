@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { BrandLogo } from '../common/BrandLogo';
 import { HistoryIcon } from '../common/icons';
 import { MobileHistorySheet } from './MobileHistorySheet';
 
@@ -21,7 +22,7 @@ export function TopBar({ title }: { title: string }) {
   return (
     <header className="topbar">
       <div className="topbar-brand-zone">
-        <span className="sidebar-brand-mark topbar-brand-mark">O</span>
+        <BrandLogo className="topbar-brand-mark" />
         <span className="topbar-brand-name">Omniscient</span>
       </div>
       <div className="topbar-main-zone">

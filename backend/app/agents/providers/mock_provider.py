@@ -15,10 +15,90 @@ from collections.abc import AsyncIterator
 
 from app.agents.providers.base import AttachmentContent, ChatTurn, LLMProvider, ToolCallProposal
 
-KNOWN_AREAS = ["Boma", "Ruring'u", "Kamakwa", "Mawingo", "Outspan", "Karatina Road", "Majengo"]
+# Localities a DeKUT student might name. This is the offline provider's
+# stand-in for what a real model would infer, and it previously listed only
+# the seeded demo areas, so naming a real area ("Kahawa Ridge", "Nyeri View")
+# extracted nothing and was silently replaced by a remembered area - asking
+# about one part of Nyeri and getting another back. Kept as an explicit list
+# because the real provider does this from the message itself.
+KNOWN_AREAS = [
+    # Real DeKUT localities, as they appear in housing listings.
+    "Boma",
+    "Kahawa Ridge",
+    "Nyeri View",
+    "Nyaribo",
+    "Near Gate A",
+    "Near Gate B",
+    "Embassy Area",
+    "King'ong'o",
+    "Hill court",
+    "Town",
+    # Seeded demo areas, so mock-mode data still resolves.
+    "Ruring'u",
+    "Kamakwa",
+    "Mawingo",
+    "Outspan",
+    "Karatina Road",
+    "Majengo",
+]
 
-_HOUSING_KEYWORDS = ["hostel", "hostels", "rent", "accommodation", "room", "house", "lodging", "bedsitter"]
-_ACADEMIC_KEYWORDS = ["class", "classes", "timetable", "lecture", "schedule", "unit", "deadline", "exam date"]
+_HOUSING_KEYWORDS = [
+    "hostel",
+    "hostels",
+    "rent",
+    "accommodation",
+    "room",
+    "rooms",
+    "house",
+    "lodging",
+    "bedsitter",
+    "where to live",
+    "somewhere to stay",
+    "vacancy",
+    "vacancies",
+    "space",
+]
+# A follow-up that only names a place ("what about Kahawa Ridge?") carries no
+# domain keyword at all. These are the shapes such a message takes, so the
+# housing domain can still be recognised from the message rather than only
+# from the conversation so far.
+_FOLLOW_UP_HOUSING_PATTERNS = [
+    r"^what about\b",
+    r"^how about\b",
+    r"^and\b",
+    r"^any (?:in|at|around|near)\b",
+    r"^in [a-z']",
+    r"^around [a-z']",
+    r"^near [a-z']",
+]
+_ACADEMIC_KEYWORDS = [
+    "class",
+    "classes",
+    "timetable",
+    "lecture",
+    "lectures",
+    "schedule",
+    "unit",
+    "deadline",
+    "exam date",
+    "year group",
+    "semester",
+    "trimester",
+    "reporting",
+    "resumption",
+    "term dates",
+]
+
+# A question about the shape of the year rather than about a timetable. The
+# offline provider has no model to reason with, so it recognises the phrasing
+# directly instead of inferring it from an intent.
+_CALENDAR_PATTERN = re.compile(
+    r"\b(semester|trimester|term)\b[^?]*\b(dates?|start|ends?|running|current|when|calendar|reporting|resumption|long|length)\b"
+    r"|\bwhich\s+(semester|trimester|term)\b"
+    r"|\bwhat\s+(semester|trimester)\b"
+    r"|\breporting\s+date\b"
+    r"|\bresumption\b",
+)
 _PAST_PAPER_KEYWORDS = ["past paper", "past papers", "cat", "revision", "exam paper", "question paper"]
 _COMPLAINT_KEYWORDS = ["complaint", "broken", "report", "issue", "leak", "tap", "wifi", "power", "fault", "not working"]
 
@@ -53,10 +133,25 @@ def _extract_budget(message: str) -> int | None:
 
 def _extract_area(message: str) -> str | None:
     lower = message.lower()
-    for area in KNOWN_AREAS:
+    # Longest first, so "Near Gate A" wins over any shorter overlapping
+    # name, and so "Hill court" is not cut short by "hill".
+    for area in sorted(KNOWN_AREAS, key=len, reverse=True):
         if area.lower() in lower:
             return area
     return None
+
+
+def _names_a_known_area(message: str) -> bool:
+    return _extract_area(message) is not None
+
+
+def _looks_like_a_follow_up(message: str) -> bool:
+    """True for the shapes a contextual follow-up takes: "what about X?",
+    "any in Y?", "and Z". These carry no domain keyword of their own."""
+    lowered = message.strip().lower()
+    if not lowered:
+        return False
+    return any(re.search(pattern, lowered) for pattern in _FOLLOW_UP_HOUSING_PATTERNS)
 
 
 def _extract_distance(message: str) -> float | None:
@@ -77,6 +172,29 @@ def _extract_day(message: str) -> int | None:
         if name in lower:
             return idx
     return None
+
+# The department calls a cohort a "year group" and writes it "2.1" or
+# "Year 2.2", and calls the two first-year classes CS/FS. Both spellings are
+# matched here so a student asking either way gets their own grid.
+_YEAR_GROUP_PATTERN = re.compile(r"\b(?:year\s*)?([1-9])[\.\s]?([1-3])\b", re.IGNORECASE)
+_STREAM_PATTERN = re.compile(r"\b(CS|FS|BIT|BEE|BCE)\b")
+
+
+def _extract_cohort(message: str) -> tuple[str | None, str | None]:
+    """The year group and class a student asked about, if they named one.
+
+    Returns `(year_group, stream)`. Deliberately returns `None` rather than a
+    default: the timetable is the whole programme until the student says
+    otherwise, and guessing a cohort would quietly answer the wrong one.
+    """
+    lower = message.lower()
+    year_group = None
+    match = _YEAR_GROUP_PATTERN.search(lower)
+    if match and int(match.group(1)) <= 4:
+        year_group = f"{match.group(1)}.{match.group(2)}"
+    stream_match = _STREAM_PATTERN.search(lower)
+    stream = stream_match.group(1).upper() if stream_match else None
+    return year_group, stream
 
 
 def _extract_complaint_category(message: str) -> str:
@@ -105,6 +223,19 @@ def _extract_past_paper_query(message: str) -> str:
 class MockProvider(LLMProvider):
     display_name = "Mock Assistant"
 
+    @staticmethod
+    def _last_assistant_turn_was_about(history: list[ChatTurn], subject: str) -> bool:
+        """Whether the assistant's most recent reply was about `subject`.
+
+        Used only to rescue a follow-up that names no domain keyword. A real
+        provider gets this from the conversation itself; the offline one has
+        to look for it.
+        """
+        for turn in reversed(history):
+            if turn.role == "assistant":
+                return subject in turn.content.lower()
+        return False
+
     async def classify_intent(self, message: str, history: list[ChatTurn], domains: list[str]) -> dict:
         scores = {
             "housing": _score(message, _HOUSING_KEYWORDS),
@@ -114,6 +245,21 @@ class MockProvider(LLMProvider):
         }
         best_domain = max(scores, key=lambda k: scores[k])
         best_score = scores[best_domain]
+
+        if best_score == 0.0:
+            # A follow-up that names a place but no domain ("what about Kahawa
+            # Ridge?") is still a housing question - a student asking that is
+            # continuing the conversation, not starting an unrelated one.
+            # Inferring it from the message plus the recent turn is what keeps
+            # a follow-up from being answered with "what would you like to
+            # do?", which is the opposite of continuing.
+            if _looks_like_a_follow_up(message) and _names_a_known_area(message):
+                scores["housing"] = 0.6
+                best_domain, best_score = "housing", 0.6
+            elif _looks_like_a_follow_up(message) and self._last_assistant_turn_was_about(history, "hostel"):
+                scores["housing"] = 0.5
+                best_domain, best_score = "housing", 0.5
+
         if best_score == 0.0:
             return {"intent": "general", "confidence": 0.9, "parameters": {}}
 
@@ -132,6 +278,11 @@ class MockProvider(LLMProvider):
             day = _extract_day(message)
             if day is not None:
                 parameters["day_of_week"] = day
+            year_group, stream = _extract_cohort(message)
+            if year_group is not None:
+                parameters["year_group"] = year_group
+            if stream is not None:
+                parameters["stream"] = stream
         elif best_domain == "past_papers":
             parameters["query"] = _extract_past_paper_query(message)
         elif best_domain == "complaints":
@@ -152,6 +303,8 @@ class MockProvider(LLMProvider):
             args = {k: v for k, v in parameters.items() if not k.startswith("_")}
             return [ToolCallProposal(tool="search_hostels", arguments=args)]
         if intent == "academics":
+            if _CALENDAR_PATTERN.search(message.lower()):
+                return [ToolCallProposal(tool="get_academic_calendar", arguments={})]
             args = {k: v for k, v in parameters.items() if not k.startswith("_")}
             return [ToolCallProposal(tool="get_timetable", arguments=args)]
         if intent == "past_papers":
@@ -238,6 +391,30 @@ def _compose_answer(intent: str, tool_results: list[dict]) -> str:
         if not hostels:
             return "I couldn't find any hostels matching that budget and area. Try widening your search."
         return f"I found {len(hostels)} hostel option{'s' if len(hostels) != 1 else ''} for you — see the details below."
+
+    if tool_name == "get_academic_calendar":
+        if not isinstance(data, dict):
+            return "I couldn't read the academic calendar just now."
+        terms = data.get("terms") or []
+        running = data.get("current_trimester")
+        period = ""
+        for term in terms:
+            if term.get("trimester") == running:
+                period = (
+                    f" {term.get('start_date','')} to {term.get('end_date','')}".strip()
+                )
+                break
+        caveat = (
+            " Those dates are the published plan — confirm with your registrar, since reporting and "
+            "resumption dates are set per programme and can move."
+            if not data.get("dates_confirmed", True)
+            else ""
+        )
+        return (
+            f"DeKUT runs three trimesters a year, and right now it is Semester {running} of "
+            f"{data.get('current_academic_year', 'this year')}, running{period or ' now'}.{caveat} "
+            "Semester 1 is January-April, Semester 2 May-August and Semester 3 September-December."
+        )
 
     if tool_name == "get_timetable":
         entries = data or []

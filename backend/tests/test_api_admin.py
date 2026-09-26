@@ -225,11 +225,16 @@ async def test_admin_timetable_and_deadline_crud(app_client: AsyncClient, db_ses
             "end_time": "11:00",
             "venue": "LT9",
             "session_type": "lecture",
+            "academic_year": "2026/2027",
+            "semester": 1,
+            "year_group": "2.1",
         },
         headers=headers,
     )
     assert entry.status_code == 201
     assert entry.json()["course_code"] == course.code
+    assert entry.json()["year_group"] == "2.1"
+    assert entry.json()["lecturer"] == course.lecturer
     entry_id = entry.json()["id"]
 
     deleted_entry = await app_client.delete(f"/api/admin/timetable/{entry_id}", headers=headers)

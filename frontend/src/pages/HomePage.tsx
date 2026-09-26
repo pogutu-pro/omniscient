@@ -34,6 +34,7 @@ export function HomePage() {
     providerName,
     sendMessage,
     retry,
+    rateMessage,
   } = useChatStream(sessionParam);
   const [mobileActivityOpen, setMobileActivityOpen] = useState(false);
 
@@ -66,7 +67,13 @@ export function HomePage() {
               <div className="skeleton" style={{ height: 60, width: '70%', alignSelf: 'flex-end' }} />
             </div>
           ) : (
-            <MessageList messages={messages} isSlow={isSlow} onSuggestion={sendMessage} />
+            <MessageList
+              messages={messages}
+              isSlow={isSlow}
+              isStreaming={isStreaming}
+              onSuggestion={sendMessage}
+              onRate={rateMessage}
+            />
           )}
         </div>
         {error && (

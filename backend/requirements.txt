@@ -16,3 +16,22 @@ anthropic==0.42.0
 openai==1.58.1
 structlog==24.4.0
 greenlet==3.1.1
+# pgvector's SQLAlchemy type, used by the past-paper RAG tables. The vector
+# itself comes from the database, not from this package.
+pgvector==0.3.6
+# ONNX-based sentence embeddings, run in-process. Deliberately not
+# sentence-transformers: that pulls PyTorch, which is ~800 MB of image and
+# a large RAM/CPU cost for a 90 MB model. Only needed when
+# EMBEDDING_ENABLED=true and EMBEDDING_BACKEND=local.
+fastembed==0.4.2
+# boto3 drives the S3-compatible backend, which is what Cloudflare R2 is
+# reached through. Optional at runtime: only imported when
+# STORAGE_PROVIDER=s3.
+boto3==1.35.87
+# Text extraction for past-paper PDFs, so the RAG indexer can turn an
+# uploaded paper into embeddable chunks.
+pypdf==5.1.0
+# Reads the departmental teaching timetables that `app.scripts_entry
+# import-timetable` ingests. Pure Python, no compiled extras, and only
+# imported by that command - the web app itself never opens a spreadsheet.
+openpyxl==3.1.5

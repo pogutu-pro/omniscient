@@ -102,6 +102,10 @@
   --transition-fast: 0.12s ease;
   --transition-base: 0.18s ease;
 
+  /* Brand mark (served from /public/logo.png) */
+  --brand-logo-size: 28px;
+  --brand-logo-size-sm: 24px;
+
   /* Component heights */
   --control-height-sm: 36px;
   --control-height-md: 44px;
@@ -113,7 +117,7 @@
   --sidebar-width: 224px;
   --activity-width: 336px;
   --topbar-height: 56px;
-  --bottom-nav-height: 60px;
+  --bottom-nav-height: 64px;
   --status-strip-height: 40px;
   --content-max-width: 720px;
 

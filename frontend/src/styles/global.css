@@ -51,6 +51,20 @@ select {
   color: var(--color-text-muted);
 }
 
+/* ---------- Brand ---------- */
+/* The mark is a photo, so it is contained rather than cropped, and the
+   radius matches the card radius the rest of the shell uses. */
+.brand-logo {
+  display: block;
+  width: var(--brand-logo-size);
+  height: var(--brand-logo-size);
+  border-radius: var(--radius-md);
+  object-fit: contain;
+  object-position: center;
+  flex-shrink: 0;
+  user-select: none;
+}
+
 /* ---------- Buttons ---------- */
 .btn {
   display: inline-flex;

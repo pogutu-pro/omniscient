@@ -1,0 +1,21 @@
+# Lint configuration, made explicit so CI and a developer's machine agree.
+#
+# `ruff format` is deliberately NOT part of this project's workflow: the
+# existing code was never formatted with it and adopting it now would
+# produce a several-hundred-line reformat diff that buries the actual
+# change. Linting (unused imports, undefined names, shadowed builtins) is
+# the valuable check and is enforced instead.
+line-length = 120
+target-version = "py311"
+
+[lint]
+# Defaults are E4/E7/E9 + F. F is the part that catches real defects
+# (undefined names, unused imports); E catches syntax-level problems.
+select = ["E4", "E7", "E9", "F"]
+
+[lint.per-file-ignores]
+# Tests import the whole model registry for its side effects and build
+# fixtures dynamically, so unused-import noise there is not actionable.
+"tests/*" = ["F401", "F403", "F405"]
+# Alembic's generated revision files have a fixed boilerplate shape.
+"migrations/versions/*" = ["F401"]

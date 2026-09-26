@@ -33,18 +33,10 @@
   justify-content: flex-end;
 }
 
+/* The shared .brand-logo is already 28px, the size this avatar used to be,
+   so only the optical alignment with the first line of text is set here. */
 .message-avatar {
-  width: 28px;
-  height: 28px;
-  border-radius: var(--radius-md);
-  background: var(--color-brand);
-  color: white;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 12px;
-  font-weight: var(--font-semibold);
-  flex-shrink: 0;
+  margin-top: 1px;
 }
 
 .message-content {
@@ -186,6 +178,176 @@
   border-color: var(--color-brand);
   background: var(--color-brand-soft);
   color: var(--color-text-primary);
+}
+
+/* ---------- Message actions (copy / share / rate) ----------
+   A quiet row under the answer. Deliberately low-contrast until hover: it
+   sits under every single reply, so anything heavier competes with the
+   answer it belongs to. The thumb is the one control that earns colour, and
+   only once pressed. */
+.message-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-top: var(--space-2);
+  /* Bleeds to the message edge so a control is never flush against text. */
+  margin-inline-start: -6px;
+}
+
+.message-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 30px;
+  padding: 0 var(--space-2);
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+
+.message-action:hover:not(:disabled) {
+  background: var(--color-surface-hover);
+  color: var(--color-text-primary);
+}
+
+.message-action:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.message-action-icon {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}
+
+.message-action-icon.is-done {
+  color: var(--color-success);
+}
+
+.message-action-text {
+  white-space: nowrap;
+}
+
+/* The thumbs sit together so up and down read as one control. */
+.message-rating {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+}
+
+.message-action-thumb {
+  padding: 0 var(--space-2);
+}
+
+.message-action-thumb.is-active {
+  color: var(--color-verified);
+  background: var(--color-verified-soft);
+}
+
+.message-action-thumb.is-active.is-down {
+  color: var(--color-error);
+  background: var(--color-error-soft);
+}
+
+.message-actions-divider {
+  width: 1px;
+  height: 14px;
+  margin: 0 var(--space-1);
+  background: var(--color-border);
+  flex-shrink: 0;
+}
+
+/* On a narrow phone the words are the first thing to go: the icons stay,
+   because copy and share are both recognisable glyphs, and the accessible
+   name is on the button either way. */
+@media (max-width: 480px) {
+  .message-action-text {
+    display: none;
+  }
+}
+
+/* ---------- Follow-up suggestions ----------
+   One non-wrapping, horizontally scrollable line. The previous version
+   wrapped, which on a phone stacked four chips vertically and grew the block
+   to ~190px - more vertical space than the answer it was attached to, and
+   enough to push the composer off screen. */
+.suggestions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  min-width: 0;
+}
+
+.suggestions-label {
+  flex-shrink: 0;
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+  white-space: nowrap;
+}
+
+.suggestions-row {
+  display: flex;
+  gap: var(--space-2);
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  /* Chips keep their size and the row scrolls, so a long suggestion can
+     never reflow the block it sits under. */
+  flex-wrap: nowrap;
+  scroll-snap-type: x proximity;
+  /* Bleed toward the message edge on a phone so it reads as scrollable
+     rather than as a row that has been cut off. */
+  margin-inline: calc(var(--space-2) * -1);
+  padding-inline: var(--space-2);
+}
+
+.suggestions-row::-webkit-scrollbar {
+  display: none;
+}
+
+.suggestion-chip {
+  flex-shrink: 0;
+  scroll-snap-align: start;
+  min-height: 30px;
+  max-width: 60vw;
+  text-align: left;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  padding: 0 var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: border-color 0.12s ease, background-color 0.12s ease, color 0.12s ease;
+}
+
+.suggestion-chip:hover:not(:disabled) {
+  border-color: var(--color-brand);
+  background: var(--color-brand-soft);
+  color: var(--color-text-primary);
+}
+
+.suggestion-chip:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* On a roomy screen the row does not need to scroll, so cap the chip width
+   rather than letting one long label dominate the line. */
+@media (min-width: 900px) {
+  .suggestion-chip {
+    max-width: 260px;
+  }
 }
 
 /* ---------- Composer ---------- */
@@ -450,6 +612,77 @@
   }
 }
 
+/* ---------- Execution trace ----------
+   The panel answers "what is it actually doing, and how long is it taking".
+   Steps are grouped into the three phases a person recognises, each step
+   carries its own duration, and the concrete parameters used are shown as
+   chips so the trace states what was searched for rather than only that a
+   search happened. */
+
+.trace {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.trace-summary {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-app-bg);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+}
+
+.trace-summary strong {
+  color: var(--color-text-primary);
+  font-weight: var(--font-semibold);
+}
+
+.trace-summary-dot {
+  color: var(--color-text-muted);
+}
+
+.trace-turns {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.trace-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.trace-group-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding-bottom: var(--space-1);
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.trace-group-title {
+  margin: 0;
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.trace-group-duration {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
 .trace-list {
   list-style: none;
   margin: 0;
@@ -462,8 +695,12 @@
   display: flex;
   gap: var(--space-3);
   align-items: flex-start;
-  padding-bottom: var(--space-4);
+  padding-bottom: var(--space-3);
   animation: trace-item-in 0.2s ease-out;
+}
+
+.trace-item:last-child {
+  padding-bottom: 0;
 }
 
 @keyframes trace-item-in {
@@ -483,20 +720,22 @@
   flex-direction: column;
   align-items: center;
   flex-shrink: 0;
+  align-self: stretch;
 }
 
-.trace-item.has-connector .trace-icon-col::after {
-  content: '';
+/* Drawn as its own element rather than a ::after so the connector is not
+   clipped by the icon box, and so it can stop short of the last item. */
+.trace-connector {
   position: absolute;
-  top: 18px;
-  bottom: calc(-1 * var(--space-4));
+  top: 20px;
+  bottom: calc(-1 * var(--space-3));
   width: 1px;
   background: var(--color-border);
 }
 
 .trace-icon {
-  width: 16px;
-  height: 16px;
+  width: 15px;
+  height: 15px;
   margin-top: 2px;
   flex-shrink: 0;
 }
@@ -515,23 +754,227 @@
 }
 
 .trace-dot {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: var(--radius-full);
   background: var(--color-text-muted);
   margin-top: 6px;
   flex-shrink: 0;
 }
 
+.trace-dot-tool {
+  background: var(--color-success);
+}
+
+.trace-dot-render {
+  background: var(--color-brand);
+}
+
+.trace-item-body {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.trace-item-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
 .trace-item-label {
+  margin: 0;
   font-size: var(--text-sm);
   color: var(--color-text-primary);
+  line-height: 1.45;
+  font-weight: var(--font-medium);
+  min-width: 0;
+}
+
+.trace-item-failed .trace-item-label {
+  color: var(--color-error);
+}
+
+/* Tabular figures so a changing duration does not make the row jitter. */
+.trace-item-duration {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.trace-item-detail {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+  line-height: 1.45;
+}
+
+.trace-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.trace-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  max-width: 100%;
+  padding: 1px 7px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-app-bg);
+  font-size: var(--text-xs);
+  line-height: 1.6;
+}
+
+.trace-chip-label {
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+.trace-chip-value {
+  color: var(--color-text-primary);
+  font-weight: var(--font-medium);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.trace-empty {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-3);
+  text-align: left;
+}
+
+.trace-empty-title {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+  color: var(--color-text-primary);
+}
+
+.trace-empty-body {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
   line-height: 1.5;
 }
 
-.trace-item-tool {
-  font-size: var(--text-xs);
-  color: var(--color-text-muted);
-  font-family: ui-monospace, monospace;
+/* ---------- Turns ----------
+   A follow-up question continues the same thread, so earlier turns stay in
+   the panel collapsed to one line and the newest turn is open. Collapsing is
+   what keeps an accumulating trace readable: without it a long conversation
+   turns the panel into a wall of steps and the current work is impossible
+   to find. */
+
+.trace-turn {
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  overflow: hidden;
 }
 
+.trace-turn.is-active {
+  border-color: var(--color-border);
+}
+
+.trace-turn + .trace-turn {
+  margin-top: var(--space-2);
+}
+
+.trace-turn-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  background: none;
+  border: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  min-height: 44px;
+}
+
+.trace-turn-header:hover {
+  background: var(--color-app-bg);
+}
+
+.trace-turn-marker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  flex-shrink: 0;
+}
+
+.trace-turn-marker .trace-icon {
+  margin-top: 0;
+  width: 14px;
+  height: 14px;
+}
+
+.trace-turn-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-full);
+  background: var(--color-border-strong);
+}
+
+.trace-turn.is-active .trace-turn-dot {
+  background: var(--color-brand);
+}
+
+.trace-turn-headings {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+}
+
+.trace-turn-prompt {
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  color: var(--color-text-primary);
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trace-turn-meta {
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.trace-turn-chevron {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: var(--color-text-muted);
+  transition: transform var(--transition-fast);
+}
+
+.trace-turn-chevron.is-open {
+  transform: rotate(180deg);
+}
+
+.trace-turn-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: 0 var(--space-3) var(--space-3);
+  border-top: 1px solid var(--color-border-subtle);
+  padding-top: var(--space-3);
+}

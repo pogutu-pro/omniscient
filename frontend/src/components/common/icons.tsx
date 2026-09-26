@@ -28,6 +28,7 @@ import {
   MessageSquare,
   Paperclip,
   Plus,
+  RefreshCw,
   Send,
   ShieldCheck,
   Trash2,
@@ -68,6 +69,7 @@ export const AdminIcon = withDefaults(ShieldCheck);
 export const InsightsIcon = withDefaults(BarChart3);
 export const TrashIcon = withDefaults(Trash2);
 export const UploadIcon = withDefaults(Upload);
+export const RefreshIcon = withDefaults(RefreshCw);
 export const DownloadIcon = withDefaults(Download);
 export const AttachIcon = withDefaults(Paperclip);
 export const ImageFileIcon = withDefaults(Image);

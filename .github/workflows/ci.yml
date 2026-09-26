@@ -1,0 +1,191 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+# Cancel superseded runs on the same ref. For a branch that receives
+# several pushes while CI is running, only the newest result matters.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend (tests + lint)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Lint
+        # ruff only, never `ruff format --check`: this codebase was never
+        # formatted with it, and adopting it now would bury any real
+        # change under a repo-wide reformat diff. See backend/ruff.toml.
+        run: ruff check .
+
+      - name: Tests
+        # OMNISCIENT_ENV_FILE is what keeps the suite hermetic. Without it
+        # a `backend/.env` symlink to the repo-root .env leaks local
+        # values into Settings, which previously made the housing tests
+        # call the live Rumia API and fail depending on whose machine
+        # they ran on.
+        env:
+          OMNISCIENT_ENV_FILE: ""
+        run: pytest -q --junitxml=pytest-report.xml
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-report
+          path: backend/pytest-report.xml
+          retention-days: 7
+
+  frontend:
+    name: Frontend (tests + lint + typecheck + build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        # `npm ci`, not `npm install`: only the former installs the
+        # lockfile exactly and fails on a mismatch.
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        # tsc -b is what `npm run build` runs first; checking it
+        # separately gives a readable failure instead of a build error.
+        run: npx tsc -b --pretty false
+
+      - name: Tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+  # The migration is the one artifact that can be valid Python and still
+  # be wrong SQL. It runs against a real PostgreSQL with pgvector, which
+  # is also the only way to confirm `CREATE EXTENSION vector` and the
+  # HNSW index actually apply.
+  migrations:
+    name: Migrations (PostgreSQL + pgvector)
+    runs-on: ubuntu-latest
+    services:
+      db:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: omniscient
+          POSTGRES_PASSWORD: omniscient
+          POSTGRES_DB: omniscient_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U omniscient -d omniscient_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Apply migrations to an empty database
+        env:
+          OMNISCIENT_ENV_FILE: ""
+          DATABASE_URL: postgresql+asyncpg://omniscient:omniscient@localhost:5432/omniscient_test
+          DATABASE_URL_SYNC: postgresql://omniscient:omniscient@localhost:5432/omniscient_test
+        run: alembic upgrade head
+
+      - name: Confirm the vector extension and index exist
+        env:
+          PGPASSWORD: omniscient
+        run: |
+          psql -h localhost -U omniscient -d omniscient_test -v ON_ERROR_STOP=1 <<'SQL'
+          SELECT 1 FROM pg_extension WHERE extname = 'vector';
+          SELECT 1 FROM pg_indexes
+            WHERE indexname = 'ix_past_paper_chunks_embedding_hnsw';
+          SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'past_paper_chunks' AND column_name = 'embedding';
+          SQL
+
+      - name: Confirm there is a single head and it is downgradeable
+        env:
+          OMNISCIENT_ENV_FILE: ""
+          DATABASE_URL: postgresql+asyncpg://omniscient:omniscient@localhost:5432/omniscient_test
+          DATABASE_URL_SYNC: postgresql://omniscient:omniscient@localhost:5432/omniscient_test
+        run: |
+          heads=$(alembic heads | wc -l)
+          if [ "$heads" -ne 1 ]; then
+            echo "Expected exactly 1 migration head, found $heads. Two heads means a merge is missing."
+            exit 1
+          fi
+          alembic downgrade base
+          alembic upgrade head
+
+  # Building the images on CI, on the target architecture, is what makes
+  # the ARM migration safe: an aarch64-incompatible wheel or base image
+  # fails here instead of on the VM at deploy time. Only the backend is
+  # built for arm64, since that is the container carrying the ONNX
+  # runtime and therefore the actual risk.
+  arm64-build:
+    name: Backend image builds on arm64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build for aarch64 (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          platforms: linux/arm64
+          # Load it into the local daemon so the real build — including
+          # the embedding-model download — actually executes.
+          load: true
+          tags: omniscient-backend:arm64-ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

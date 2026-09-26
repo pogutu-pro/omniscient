@@ -10,7 +10,11 @@ a hostel here is what makes `search_hostels` find it.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+import os
+import tempfile
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import (
@@ -18,28 +22,48 @@ from app.api.deps import (
     get_complaint_repo,
     get_current_admin,
     get_db_session,
+    get_db,
+    get_embedding_service,
     get_hostel_repo,
     get_past_paper_repo,
+    get_settings_dep,
+    get_storage_dep,
 )
+from app.core.config import Settings
+from app.models.past_paper import PastPaper
 from app.repositories.academic_repository import AcademicRepository
+from app.repositories.chunk_repository import SqlChunkRepository
 from app.repositories.complaint_repository import ComplaintRepository
 from app.repositories.hostel_repository import HostelRepository, HostelWriteNotSupported
 from app.repositories.past_paper_repository import PastPaperRepository
 from app.schemas.academics import (
     AcademicDeadlineCreate,
     AcademicDeadlineOut,
+    AcademicTermCreate,
+    AcademicTermOut,
     CourseCreate,
     CourseOut,
     ProgrammeCreate,
     ProgrammeOut,
     TimetableEntryCreate,
     TimetableEntryOut,
+    TimetableImportReportOut,
 )
 from app.schemas.complaint import ALLOWED_STATUSES, ComplaintOut
 from app.schemas.housing import HostelCreate, HostelOut, HostelUpdate
 from app.schemas.insights import InsightsOut
 from app.schemas.past_paper import PastPaperCreate, PastPaperOut
+from app.schemas.rag_admin import ReindexAccepted, ReindexRequest, ReindexStatus
+from app.services.embedding_service import EmbeddingService
 from app.services.insights_service import build_insights
+from app.services.paper_index_service import PaperIndexService
+from app.services.reindex_job import start_reindex, state
+from app.services.storage.base import StorageBackend
+from app.services.timetable_import import (
+    TimetableImportError,
+    import_timetable,
+    parse_timetable_workbook,
+)
 
 router = APIRouter(prefix="/api/admin", tags=["admin"], dependencies=[Depends(get_current_admin)])
 
@@ -143,6 +167,70 @@ async def delete_deadline(deadline_id: str, repo: AcademicRepository = Depends(g
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Deadline not found")
 
 
+@router.put("/terms", response_model=AcademicTermOut)
+async def upsert_term(
+    data: AcademicTermCreate, repo: AcademicRepository = Depends(get_academic_repo)
+) -> AcademicTermOut:
+    """Enter or correct a trimester's dates.
+
+    Keyed on (academic year, trimester), so this is how a slipped reporting
+    date is corrected in place rather than added as a second, conflicting
+    term. Admin-only like the rest of this router: the assistant and the
+    student-facing calendar read these rows, so an unauthenticated writer
+    here would be able to rewrite the dates the whole faculty is told.
+    """
+    return await repo.upsert_term(data)
+
+
+@router.post("/timetable/import", response_model=TimetableImportReportOut)
+async def import_timetable_file(
+    file: UploadFile = File(...),
+    programme_code: str = Form("BCS"),
+    academic_year: str | None = Form(None),
+    overwrite: bool = Form(False),
+    prune: bool = Form(False),
+    session: AsyncSession = Depends(get_db_session),
+) -> TimetableImportReportOut:
+    """Upload and ingest a teaching timetable spreadsheet (.xlsx)."""
+    if not file.filename or not file.filename.lower().endswith(".xlsx"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only Excel workbooks (.xlsx) are supported.",
+        )
+    with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
+        tmp_path = tmp.name
+        content = await file.read()
+        tmp.write(content)
+    try:
+        parsed = parse_timetable_workbook(tmp_path, academic_year=academic_year or None)
+        report = await import_timetable(
+            session,
+            parsed,
+            programme_code=programme_code,
+            overwrite_course_detail=overwrite,
+            prune=prune,
+        )
+        return TimetableImportReportOut(
+            academic_year=report.academic_year,
+            term_label=report.term_label,
+            programme_code=report.programme_code,
+            courses_created=report.courses_created,
+            courses_updated=report.courses_updated,
+            sessions_created=report.sessions_created,
+            sessions_updated=report.sessions_updated,
+            sessions_removed=report.sessions_removed,
+            sessions_without_a_catalogue_entry=report.sessions_without_a_catalogue_entry,
+            warnings=report.warnings,
+            official_trimester=report.official_trimester,
+            summary=report.summary(),
+        )
+    except TimetableImportError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    finally:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+
+
 # --- Past papers ---
 @router.post("/past-papers", response_model=PastPaperOut, status_code=status.HTTP_201_CREATED)
 async def create_past_paper(
@@ -155,6 +243,74 @@ async def create_past_paper(
 async def delete_past_paper(paper_id: str, repo: PastPaperRepository = Depends(get_past_paper_repo)) -> None:
     if not await repo.delete(paper_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Past paper not found")
+
+
+# --- Past-paper RAG index ---
+# Routes are declared before "/past-papers/{paper_id}" would ever match
+# them only by luck of ordering, so both live under a distinct prefix to
+# keep "/past-papers/reindex" from being read as a paper id.
+@router.post("/rag/reindex", response_model=ReindexAccepted, status_code=status.HTTP_202_ACCEPTED)
+async def reindex_past_papers(
+    body: ReindexRequest | None = None,
+    storage: StorageBackend = Depends(get_storage_dep),
+    embeddings: EmbeddingService = Depends(get_embedding_service),
+    settings: Settings = Depends(get_settings_dep),
+) -> ReindexAccepted:
+    """Queue a rebuild of the past-paper vector index.
+
+    Returns immediately: the work runs in the background because a full
+    library takes minutes and an admin dashboard should not sit on a
+    pending request that long. Poll `/rag/index-status` for progress.
+    """
+    if not settings.embedding_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Embeddings are disabled on this deployment. Set EMBEDDING_ENABLED=true to build an index.",
+        )
+    request = body or ReindexRequest()
+
+    async def job():
+        # A session of its own: this work outlives the request, so it must
+        # not sit on a request-scoped session for its whole lifetime.
+        async for session in get_db():
+            service = PaperIndexService(session, storage, embeddings, settings)
+            return await service.reindex_all(
+                force=request.force,
+                paper_ids=request.past_paper_ids,
+                concurrency=request.concurrency,
+            )
+
+    if not start_reindex(job):
+        return ReindexAccepted(
+            started=False,
+            already_running=True,
+            detail="A reindex is already running. Wait for it to finish before starting another.",
+        )
+    return ReindexAccepted(
+        started=True, detail="Reindex started in the background. Poll /api/admin/rag/index-status for progress."
+    )
+
+
+@router.get("/rag/index-status", response_model=ReindexStatus)
+async def reindex_status(
+    session: AsyncSession = Depends(get_db_session),
+    settings: Settings = Depends(get_settings_dep),
+) -> ReindexStatus:
+    chunks = SqlChunkRepository(session)
+    total_chunks = await chunks.total_count()
+    indexed = len(await chunks.distinct_paper_ids())
+    total_papers = int((await session.execute(select(func.count()).select_from(PastPaper))).scalar_one())
+    return ReindexStatus(
+        running=state.running,
+        total_chunks=total_chunks,
+        indexed_papers=indexed,
+        total_papers=total_papers,
+        last_report=state.last_report,
+        last_error=state.last_error,
+        embedding_backend=settings.embedding_backend,
+        embedding_model=settings.embedding_model,
+        rag_enabled=settings.rag_enabled,
+    )
 
 
 # --- Complaints ---

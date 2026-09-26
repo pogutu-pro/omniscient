@@ -23,8 +23,9 @@ from app.core.logging import get_logger
 from app.core.rate_limit import enforce_chat_rate_limit
 from app.models.student import Student
 from app.repositories.chat_repository import SqlChatRepository
+from app.repositories.message_rating_repository import MessageNotFound, SqlMessageRatingRepository
 from app.repositories.student_repository import SqlStudentRepository
-from app.schemas.chat import ChatRequest
+from app.schemas.chat import ChatRequest, RatingIn, RatingOut, ShareIn, ShareOut
 from app.services import personalization_service
 from app.services.storage.factory import get_storage_backend
 from app.tools.registry import ToolContext, ToolRegistry
@@ -163,14 +164,28 @@ async def chat(
             await asyncio.gather(producer_task, return_exceptions=True)
 
         final_text = "".join(final_text_parts).strip()
+        assistant_message_id: str | None = None
         if final_text or content_blocks:
-            await chat_repo.add_message(
+            assistant_message = await chat_repo.add_message(
                 chat_session.id, "assistant", final_text, final_intent, content_blocks=content_blocks or None
             )
+            # Hand the client the id the database assigned. While a reply is
+            # streaming the frontend only has a temporary local id, and any
+            # action addressed to that id (rating an answer, say) would 404
+            # against the server. Without this the copy/share/rate row is
+            # inert on every freshly produced answer and only works after a
+            # reload.
+            assistant_message_id = assistant_message.id
         if student and preference_updates:
             await student_repo.update_preferences(student.id, preference_updates)
 
-        yield _sse({"type": "stream_end", "session_id": chat_session.id})
+        yield _sse(
+            {
+                "type": "stream_end",
+                "session_id": chat_session.id,
+                "message_id": assistant_message_id,
+            }
+        )
 
     return StreamingResponse(
         event_stream(),
@@ -182,6 +197,7 @@ async def chat(
 @router.get("/sessions/{session_id}/messages")
 async def get_session_messages(
     session_id: str,
+    student: Student | None = Depends(get_optional_student),
     session_db: AsyncSession = Depends(get_db_session),
 ) -> list[dict]:
     chat_repo = SqlChatRepository(session_db)
@@ -189,6 +205,18 @@ async def get_session_messages(
     if not chat_session:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chat session not found")
     messages = await chat_repo.list_messages(session_id)
+    # The student's own verdicts ride along with the history so reopening a
+    # conversation shows the thumbs they already pressed, rather than
+    # resetting the control and inviting them to rate the same reply twice.
+    # Deliberately optional auth: history has always been readable without a
+    # token, and requiring one here would be a breaking change unrelated to
+    # ratings. An anonymous caller simply gets no ratings rather than someone
+    # else's.
+    ratings = (
+        await SqlMessageRatingRepository(session_db).ratings_for_messages([m.id for m in messages], student.id)
+        if student
+        else {}
+    )
     return [
         {
             "id": m.id,
@@ -198,9 +226,86 @@ async def get_session_messages(
             "created_at": m.created_at.isoformat(),
             "content_blocks": m.content_blocks,
             "attachments": m.attachments,
+            "rating": ratings.get(m.id),
         }
         for m in messages
     ]
+
+
+@router.post("/messages/{message_id}/share", response_model=ShareOut)
+async def record_share(
+    message_id: str,
+    payload: ShareIn,
+    student: Student = Depends(get_current_student),
+    session_db: AsyncSession = Depends(get_db_session),
+) -> ShareOut:
+    """Record that a student shared an answer, and to where.
+
+    Copying is not counted: it is a private, local action, and a student who
+    copies an answer to their notes has not shared it with anyone.
+    """
+    from sqlalchemy import select, update
+
+    from app.models.chat import ChatMessage
+
+    message = await session_db.get(ChatMessage, message_id)
+    if message is None or message.role != "assistant":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Message not found")
+
+    await session_db.execute(
+        update(ChatMessage).where(ChatMessage.id == message_id).values(share_count=ChatMessage.share_count + 1)
+    )
+    await session_db.commit()
+    count = (
+        await session_db.execute(select(ChatMessage.share_count).where(ChatMessage.id == message_id))
+    ).scalar_one()
+    return ShareOut(message_id=message_id, share_count=count, target=payload.target)
+
+
+@router.get("/messages/{message_id}/rating", response_model=RatingOut)
+async def get_message_rating(
+    message_id: str,
+    student: Student = Depends(get_current_student),
+    session_db: AsyncSession = Depends(get_db_session),
+) -> RatingOut:
+    repo = SqlMessageRatingRepository(session_db)
+    ratings = await repo.ratings_for_messages([message_id], student.id)
+    return RatingOut(message_id=message_id, rating=ratings.get(message_id))  # type: ignore[arg-type]
+
+
+@router.put("/messages/{message_id}/rating", response_model=RatingOut)
+async def rate_message(
+    message_id: str,
+    payload: RatingIn,
+    student: Student = Depends(get_current_student),
+    session_db: AsyncSession = Depends(get_db_session),
+) -> RatingOut:
+    """Record a thumbs-up / thumbs-down on an assistant reply.
+
+    Re-rating replaces the previous verdict rather than adding to it, and
+    the same verdict twice is a no-op - so a student can change their mind
+    without inflating anything.
+    """
+    repo = SqlMessageRatingRepository(session_db)
+    try:
+        rating = await repo.rate(message_id=message_id, student_id=student.id, rating=payload.rating)
+    except MessageNotFound:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Message not found")
+    return RatingOut(message_id=message_id, rating=rating)  # type: ignore[arg-type]
+
+
+@router.delete(
+    "/messages/{message_id}/rating",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
+)
+async def clear_message_rating(
+    message_id: str,
+    student: Student = Depends(get_current_student),
+    session_db: AsyncSession = Depends(get_db_session),
+) -> None:
+    """Clear this student's verdict - what pressing the lit thumb again does."""
+    await SqlMessageRatingRepository(session_db).clear(message_id=message_id, student_id=student.id)
 
 
 @router.get("/sessions")

@@ -1,0 +1,83 @@
+# Caddy terminates TLS for omniscient.co.ke and routes to the two app
+# containers. Chosen over nginx because it obtains and renews the
+# Let's Encrypt certificate on its own — no cron, no certbot, no
+# reload step in the deploy pipeline, and therefore no way for a renewal
+# to silently fail and leave the site on an expired certificate.
+#
+# Certificates are written to /data (a volume), because losing them on
+# restart would trigger Let's Encrypt rate limits.
+
+{
+	email {$ACME_EMAIL:admin@omniscient.co.ke}
+	# Cloudflare fronts the DNS for this domain, so A/AAAA records resolve
+	# to Cloudflare rather than to this VM. Without this, Caddy's HTTP-01
+	# challenge would validate against Cloudflare and fail.
+	#
+	# Set to the Cloudflare origin certificate's domain, or comment this
+	# out entirely if the DNS records point straight at the VM.
+	#
+	# tls {
+	#   dns cloudflare {env.CF_API_TOKEN}
+	# }
+}
+
+www.omniscient.co.ke {
+	# Canonical host is the apex; redirect rather than serve two copies.
+	redir https://omniscient.co.ke{uri} permanent
+}
+
+omniscient.co.ke {
+	log {
+		output stdout
+		format json
+	}
+
+	# The API is not compressed. Chat responses are Server-Sent Events,
+	# and compressing an event stream buffers it: tokens would arrive in
+	# clumps after the model finished, which is the exact opposite of
+	# streaming. Everything else on this site is small and cacheable.
+	@api path /api/*
+
+	handle @api {
+		# --- streaming chat ---
+		# Flush immediately so each SSE token reaches the browser as it is
+		# produced instead of sitting in a proxy buffer.
+		@stream path /api/chat/stream*
+		handle @stream {
+			reverse_proxy backend:8000 {
+				flush_interval -1
+				transport http {
+					# Long-lived: a student thinking mid-answer is not a
+					# dead connection.
+					read_timeout 300s
+					write_timeout 300s
+				}
+			}
+		}
+
+		handle {
+			reverse_proxy backend:8000 {
+				transport http {
+					read_timeout 60s
+					write_timeout 60s
+				}
+			}
+		}
+	}
+
+	handle {
+		encode zstd gzip
+
+		# The API base URL is compiled into the bundle, so this is
+		# same-origin and needs no permissive CORS in the browser.
+		header {
+			Strict-Transport-Security "max-age=31536000; includeSubDomains"
+			X-Content-Type-Options "nosniff"
+			Referrer-Policy "strict-origin-when-cross-origin"
+			X-Frame-Options "DENY"
+			-Server
+		}
+
+		reverse_proxy frontend:80
+	}
+}

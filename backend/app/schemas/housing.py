@@ -23,6 +23,17 @@ class HostelOut(BaseModel):
     image_url: str | None = None
 
 
+class HostelAreasOut(BaseModel):
+    """The distinct areas that actually have listings.
+
+    Sent to the client so the area filter is built from the active data
+    source rather than a hardcoded list, which goes stale the moment the
+    source changes.
+    """
+
+    areas: list[str]
+
+
 class HostelSearchParams(BaseModel):
     """Validated parameters for a housing search — never raw LLM output."""
 

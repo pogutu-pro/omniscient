@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { fetchSessionMessages, streamChat } from '../api/client';
+import { fetchSessionMessages, ratingsApi, streamChat } from '../api/client';
 import type { Attachment, ContentBlock, DisplayMessage, Domain, TraceEvent } from '../types';
 
 let idCounter = 0;
@@ -26,6 +26,12 @@ export function useChatStream(initialSessionId?: string | null) {
   const [error, setError] = useState<string | null>(null);
   const [canRetry, setCanRetry] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const messagesRef = useRef<DisplayMessage[]>([]);
+  // The assistant message's current id. It starts as the temporary local id
+  // and becomes the database id when `stream_end` arrives; anything that
+  // needs to address the message after that must read this, not the id it
+  // was created with.
+  const liveIdRef = useRef<string | null>(null);
   const slowTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastFailedRef = useRef<{ text: string; assistantId: string; attachments?: Attachment[] } | null>(null);
 
@@ -78,6 +84,9 @@ export function useChatStream(initialSessionId?: string | null) {
             intent: m.intent ?? undefined,
             blocks: m.content_blocks ?? undefined,
             attachments: m.attachments ?? undefined,
+            // Reopening a conversation restores the thumbs already pressed,
+            // so the control never invites a second rating of the same reply.
+            rating: m.rating ?? undefined,
           })),
         );
       })
@@ -92,6 +101,10 @@ export function useChatStream(initialSessionId?: string | null) {
     };
   }, [initialSessionId]);
 
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
   useEffect(
     () => () => {
       abortRef.current?.abort();
@@ -103,16 +116,27 @@ export function useChatStream(initialSessionId?: string | null) {
   const runSend = useCallback(
     async (trimmed: string, assistantId: string, attachments?: Attachment[]) => {
       setError(null);
-      setTrace([]);
       setIsWriting(false);
       setIsStreaming(true);
       armSlowWatchdog();
 
       const controller = new AbortController();
       abortRef.current = controller;
+      liveIdRef.current = assistantId;
       let assistantText = '';
       let intent: Domain | undefined;
       const blocks: ContentBlock[] = [];
+
+      // Marks where this turn begins instead of clearing the trace. A
+      // follow-up question continues the same line of work, so the activity
+      // panel accumulates across the conversation rather than restarting
+      // from an empty panel on every question - which read as the assistant
+      // forgetting what it had already done. The trace is only reset when
+      // the conversation itself changes (see the initialSessionId effect).
+      setTrace((prev) => [
+        ...prev,
+        { type: 'turn_start', prompt: trimmed, receivedAt: Date.now() },
+      ]);
 
       try {
         await streamChat(
@@ -124,6 +148,22 @@ export function useChatStream(initialSessionId?: string | null) {
           (event) => {
             if (event.type === 'session' && event.session_id) {
               setSessionId(event.session_id);
+            }
+            if (event.type === 'stream_end') {
+              // Swap the temporary local id for the real one the database
+              // assigned, so the copy/share/rate row on a freshly streamed
+              // answer addresses a message that actually exists. Everything
+              // downstream must then match on the *new* id, which is why
+              // `liveIdRef` is updated here and read by the `finally` block.
+              if (event.message_id) {
+                const serverId = event.message_id;
+                liveIdRef.current = serverId;
+                setMessages((prev) => prev.map((m) => (m.id === assistantId ? { ...m, id: serverId } : m)));
+                messagesRef.current = messagesRef.current.map((m) =>
+                  m.id === assistantId ? { ...m, id: serverId } : m,
+                );
+              }
+              return;
             }
             if (event.type === 'error' && event.message) {
               setError(event.message);
@@ -145,8 +185,13 @@ export function useChatStream(initialSessionId?: string | null) {
             if (event.type === 'done' && event.data && typeof event.data.intent === 'string') {
               intent = event.data.intent as Domain;
             }
-            if (event.type !== 'session' && event.type !== 'stream_end') {
-              setTrace((prev) => [...prev, event]);
+            // `session` opens the turn and `stream_end` closed it above, so
+            // everything reaching here is a step worth showing.
+            if (event.type !== 'session') {
+              // Stamped on arrival so the activity panel can show how long
+              // each step took and keep a live ticker running, without the
+              // server having to send a timestamp for every frame.
+              setTrace((prev) => [...prev, { ...event, receivedAt: Date.now() }]);
             }
           },
           controller.signal,
@@ -168,13 +213,41 @@ export function useChatStream(initialSessionId?: string | null) {
         setIsStreaming(false);
         setIsWriting(false);
         disarmSlowWatchdog();
+        // Matched on the message's *current* id, not the temporary one this
+        // function was handed: `stream_end` swaps in the database id, and
+        // matching on the original id silently stopped applying - which left
+        // the answer with no intent, and with it no follow-up suggestions.
+        const liveId = liveIdRef.current ?? assistantId;
         setMessages((prev) =>
-          prev.map((m) => (m.id === assistantId ? { ...m, pending: false, intent: intent ?? m.intent } : m)),
+          prev.map((m) => (m.id === liveId ? { ...m, pending: false, intent: intent ?? m.intent } : m)),
         );
       }
     },
     [armSlowWatchdog, disarmSlowWatchdog, sessionId],
   );
+
+  /**
+   * Optimistically set or clear a rating.
+   *
+   * The thumb lights up immediately and rolls back if the request fails,
+   * because a control that waits for a round trip before responding feels
+   * broken even when it is about to succeed.
+   */
+  const rateMessage = useCallback(async (messageId: string, rating: 1 | -1 | null) => {
+    const previous = messagesRef.current.find((m) => m.id === messageId)?.rating;
+    setMessages((prev) =>
+      prev.map((m) => (m.id === messageId ? { ...m, rating: rating ?? undefined, ratingPending: true } : m)),
+    );
+    try {
+      if (rating === null) await ratingsApi.clear(messageId);
+      else await ratingsApi.set(messageId, rating);
+      setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, ratingPending: false } : m)));
+    } catch {
+      setMessages((prev) =>
+        prev.map((m) => (m.id === messageId ? { ...m, rating: previous, ratingPending: false } : m)),
+      );
+    }
+  }, []);
 
   const sendMessage = useCallback(
     (text: string, attachments?: Attachment[]) => {
@@ -212,5 +285,6 @@ export function useChatStream(initialSessionId?: string | null) {
     canRetry,
     sendMessage,
     retry,
+    rateMessage,
   };
 }

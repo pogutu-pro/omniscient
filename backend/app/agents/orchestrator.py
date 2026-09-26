@@ -13,7 +13,9 @@ typed, validated response.
 """
 from __future__ import annotations
 
+import time
 from collections.abc import AsyncIterator
+from typing import Any
 
 from app.agents import router
 from app.agents.content_blocks import build_blocks_for_tool
@@ -21,6 +23,28 @@ from app.agents.providers.base import AttachmentContent, ChatTurn, LLMProvider, 
 from app.schemas.chat import IntentResult, TraceEventOut
 from app.services import personalization_service
 from app.tools.registry import ToolContext, ToolRegistry
+
+# Arguments are echoed to the browser so the activity trace can show what was
+# actually searched for. These are the values the tool's own Pydantic model
+# accepted, so they are already validated and safe to show a student - never
+# raw model output. Underscore-prefixed keys are internal routing hints and
+# long free-text values (a pasted question) are truncated, because the point
+# is to show the filters applied, not to echo the whole prompt back.
+_MAX_ARG_VALUE_CHARS = 60
+_MAX_ARG_KEYS = 8
+
+
+def _public_arguments(arguments: dict[str, Any]) -> dict[str, Any]:
+    public: dict[str, Any] = {}
+    for key, value in arguments.items():
+        if key.startswith("_") or len(public) >= _MAX_ARG_KEYS:
+            continue
+        if isinstance(value, str) and len(value) > _MAX_ARG_VALUE_CHARS:
+            value = value[:_MAX_ARG_VALUE_CHARS].rstrip() + "…"
+        elif isinstance(value, list):
+            value = [str(v)[:_MAX_ARG_VALUE_CHARS] for v in value[:6]]
+        public[key] = value
+    return public
 
 _DOMAIN_STATUS = {
     "housing": "Checking hostel listings near campus...",
@@ -34,6 +58,7 @@ _TOOL_RUNNING_MESSAGE = {
     "search_hostels": "Filtering hostels by your budget and area...",
     "get_hostel": "Fetching hostel details...",
     "get_timetable": "Pulling your class timetable...",
+    "get_academic_calendar": "Checking the trimester calendar...",
     "list_academic_deadlines": "Checking upcoming academic deadlines...",
     "search_past_papers": "Searching past examination papers...",
     "get_past_paper": "Fetching past paper details...",
@@ -129,11 +154,22 @@ async def run(
     tool_results: list[dict] = []
     for proposal in proposals:
         friendly = _TOOL_RUNNING_MESSAGE.get(proposal.tool, f"Running {proposal.tool}...")
-        yield TraceEventOut(type="tool_call", tool=proposal.tool, status="running", message=friendly)
 
         # Router-validated parameters take precedence over the model's own guesses for overlapping keys.
         merged_arguments = {**proposal.arguments, **{k: v for k, v in parameters.items() if not k.startswith("_")}}
+        # Announce the arguments actually about to be used, so the trace says
+        # what is being searched for and not merely that something is.
+        yield TraceEventOut(
+            type="tool_call",
+            tool=proposal.tool,
+            status="running",
+            message=friendly,
+            arguments=_public_arguments(merged_arguments),
+        )
+
+        started = time.perf_counter()
         tool_result = await registry.call(proposal.tool, merged_arguments, ctx)
+        elapsed_ms = int((time.perf_counter() - started) * 1000)
 
         tool_results.append({"tool": proposal.tool, "ok": tool_result.ok, "data": tool_result.data, "summary": tool_result.summary})
         yield TraceEventOut(
@@ -141,6 +177,7 @@ async def run(
             tool=proposal.tool,
             status="completed" if tool_result.ok else "failed",
             summary=tool_result.summary,
+            duration_ms=elapsed_ms,
         )
 
         for block in build_blocks_for_tool(proposal.tool, tool_result.ok, tool_result.data):

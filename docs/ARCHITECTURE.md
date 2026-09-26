@@ -57,20 +57,45 @@ Any provider failure raises `ProviderUnavailable`, which the orchestrator turns 
 
 ## Repository layer & the Rumia boundary
 
-Every domain has a repository interface (`repositories/*.py`) that tools depend on, never a concrete database or ORM session directly. Housing is the one domain with two implementations, because it's the one domain Rumia is expected to eventually provide:
+Every domain has a repository interface (`repositories/*.py`) that tools depend on, never a concrete database or ORM session directly. Housing is the one domain with two implementations, because it's the one domain Rumia provides:
 
 ```python
 class HostelRepository(ABC): ...
-class MockHostelRepository(HostelRepository): ...       # Omniscient's own seeded data (active today)
-class RumiaPostgresHostelRepository(HostelRepository): ...  # read-only Rumia listings (future)
+class MockHostelRepository(HostelRepository): ...       # Omniscient's own seeded demo data (default)
+class RumiaApiHostelRepository(HostelRepository): ...  # read-only, over Rumia's public HTTP API
 
 def get_hostel_repository(session, settings) -> HostelRepository:
-    if settings.rumia_db_mode == "enabled" and settings.rumia_database_url:
-        return RumiaPostgresHostelRepository(settings.rumia_database_url)
-    return MockHostelRepository(session)
+    if settings.rumia_db_mode == "enabled":
+        return RumiaApiHostelRepository(settings)
+    return MockHostelRepository(session, settings)
 ```
 
-Switching data sources is a configuration change (`RUMIA_DB_MODE`, `RUMIA_DATABASE_URL`), not a code change. `RumiaPostgresHostelRepository` only ever reads; it is never given write access and never touches Rumia's user or lead tables.
+Switching data sources is a configuration change (`RUMIA_DB_MODE`), not a code change.
+
+**The transport is Rumia's public API, not its database.** `RumiaApiHostelRepository` calls Rumia's unauthenticated `GET /listings` and `GET /listings/{id_or_slug}`, which already filter to `is_active = true`. That choice is what makes the boundary safe by construction rather than by convention: no credential is held (nothing to leak or rotate), no write method exists (nothing to misuse), and Rumia's schema is read through its own public contract (a migration on their side cannot break us at the SQL level).
+
+A direct-Postgres transport was deliberately rejected. It would require either provisioning a role inside Rumia's production database — a write to someone else's system — or reusing a superuser credential from their `.env`, and neither is a fair price for data already served read-only over HTTP. `get_hostel_repository` has no branch that could grow one, `RUMIA_DATABASE_URL` has no consumer, and `test_the_boundary_has_no_direct_postgres_transport` guards both.
+
+Rumia is campus-scoped (one shared schema, discriminated by `campuses.slug`), so `RUMIA_CAMPUS_SLUG` selects the campus rather than assuming one.
+
+**Caching strategy.** Rumia's listings endpoint answers in 4-6 seconds, so the only cost that matters is how many times it is called. Three decisions keep that near one call per TTL:
+
+1. `get_hostel_repository` is a FastAPI dependency and therefore runs per request, so the repository — and with it the `httpx` client, its connection pool and its cache — is memoised on the config values in `_shared_repositories`. Constructing one per request would mean a fresh TLS handshake per request, a client that is never closed, and a cache that is empty every time, making the TTL meaningless.
+2. The cache holds the whole campus feed, not one entry per query, and every filter is applied to it in memory. Keying the cache by filter combination would still cost one upstream call per distinct query, which is no better than no cache for a student clicking through filters. Mapping each listing (distance parsing, amenity normalisation) also happens once per fetch rather than once per query.
+3. Reads are served stale-while-revalidate: an expired-but-usable feed is returned immediately and refreshed in a background task, so a request never blocks on Rumia. Past `RUMIA_CACHE_TTL_SECONDS + _MAX_STALE_SECONDS` the refresh is awaited, bounding staleness, and a failed refresh leaves the existing feed in place rather than surfacing as an empty result. `lifespan` in `main.py` warms the feed at startup, so the cold fetch is not charged to the first user; a failed warm-up is logged, not fatal.
+
+Measured: `/api/housing/hostels` 4.4-8.6s per request → ~5ms warm; a full chat turn ~5s → ~0.2s.
+
+**Field mapping is explicit.** A Rumia "listing" becomes an Omniscient "hostel", and almost no field name lines up, so every crossing is mapped by hand in `hostel_repository.py`:
+
+- `distance_to_campus` is agent-written prose ("10 mins walk", "Over 3 kilometres", "5 mins drive/45 mins walk", "30 bob distance via the matatu"). The parser prefers the most explicit unit, takes the midpoint of a range, declines anything it can't convert rather than inventing a number, and falls back to `distance_category`, then haversine from the listing's coordinates, then a logged last-resort constant.
+- Amenity labels ("Study Area") and utility flags are normalised onto the short lowercase tokens Omniscient's own seeded data uses ("study room"), so one `amenities` filter means the same thing whichever repository is active.
+- `is_full` plus per-room-type availability become `available | limited | full`.
+- Rumia serves absolute CDN URLs, so `image_url` is passed through and no `image_key` is invented.
+
+**`verified` is an assertion, not a field.** Rumia's API publishes no verification flag, because Rumia vets a listing before publishing it. `RUMIA_TREAT_ACTIVE_AS_VERIFIED=true` therefore encodes that process claim; set it false and nothing is claimed that cannot be seen, and a `verified_only` search returns nothing rather than passing off unvetted listings.
+
+**Failure is never disguised as emptiness.** An unreachable or malformed Rumia raises `RumiaUnavailable`, which the housing tool turns into a failed trace step with the real reason and `api/routes/housing.py` turns into `503` — never `200 []`, which to a student would read as "there is no housing near campus".
 
 Academics, past papers, and complaints are Omniscient-owned data (there is no Rumia equivalent for them), so they have a single SQL-backed implementation each.
 
@@ -78,7 +103,7 @@ Academics, past papers, and complaints are Omniscient-owned data (there is no Ru
 
 `api/routes/admin.py` (`/api/admin/*`) exposes CRUD for every domain — hostels, programmes/courses/timetable/deadlines, past papers, complaint status — plus `GET /api/admin/insights`. Every route depends on `get_current_admin` (`api/deps.py`), which loads the authenticated student from the database and checks its `is_admin` column; nothing a client or the model claims about itself is ever trusted for this check.
 
-The routes call the same repository write methods the read-side tools already depend on (`HostelRepository.create/update/delete`, `AcademicRepository.create_course`, etc.), so admin-authored content is immediately what the chat agent grounds its answers in — there is no separate "admin data path" to keep in sync. `HostelRepository` write methods raise `HostelWriteNotSupported` on `RumiaPostgresHostelRepository`, since Rumia-backed housing data stays strictly read-only even from the admin surface.
+The routes call the same repository write methods the read-side tools already depend on (`HostelRepository.create/update/delete`, `AcademicRepository.create_course`, etc.), so admin-authored content is immediately what the chat agent grounds its answers in — there is no separate "admin data path" to keep in sync. `HostelRepository` write methods raise `HostelWriteNotSupported` on `RumiaApiHostelRepository`, and the routes translate that to `409`, so while Rumia is the housing source the admin hostel panel is inert rather than silently editing someone else's production listings. (The trade-off is deliberate: with Rumia enabled, Omniscient's seeded demo hostels are also not served, because there is one housing source at a time, not two merged.)
 
 `InsightsOut` (`services/insights_service.py`) aggregates real, already-captured signal — `ChatMessage.intent` counts and complaint category/status counts — rather than fabricating a retraining claim; this is the honest interpretation of the brief's "learn from users" requirement.
 

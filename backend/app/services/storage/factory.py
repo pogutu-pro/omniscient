@@ -15,5 +15,7 @@ def get_storage_backend(settings: Settings) -> StorageBackend:
             access_key=settings.s3_access_key or "",
             secret_key=settings.s3_secret_key or "",
             region=settings.s3_region,
+            addressing_style=settings.s3_addressing_style,
+            public_url=settings.s3_public_url,
         )
     return LocalStorageBackend(settings.storage_local_path, settings.api_url)

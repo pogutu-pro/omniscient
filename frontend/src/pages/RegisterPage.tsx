@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { ApiError } from '../api/client';
+import { BrandLogo } from '../components/common/BrandLogo';
 import './auth.css';
 
 export function RegisterPage() {
@@ -39,7 +40,7 @@ export function RegisterPage() {
     <div className="auth-page">
       <form className="card auth-card" onSubmit={handleSubmit}>
         <div className="auth-brand">
-          <span className="sidebar-brand-mark">O</span>
+          <BrandLogo />
           Omniscient
         </div>
         <h1>Create your account</h1>

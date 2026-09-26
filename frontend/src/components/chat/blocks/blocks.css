@@ -18,11 +18,35 @@
 }
 
 /* ---------- Table ---------- */
+/* ---------- Table ----------
+   A six-column result table is wider than a phone, so the wrapper scrolls
+   sideways. Scrolling shadows show which way there is more to see, and they
+   are drawn with `background-attachment: local` covers so each shadow
+   disappears once that end is reached - no scroll listener, and no shadow
+   sitting on an edge that has nothing behind it. Without this the last
+   visible column is cut mid-word and reads as broken rather than as
+   "there is more this way". */
 .block-table-wrap {
   overflow-x: auto;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
-  background: var(--color-surface);
+  background-color: var(--color-surface);
+  background-image:
+    /* Covers, in scroll coordinates: opaque at the edges the content has
+       reached, so the shadow underneath is hidden there. */
+    linear-gradient(to right, var(--color-surface), rgba(255, 255, 255, 0)),
+    linear-gradient(to left, var(--color-surface), rgba(255, 255, 255, 0)),
+    /* Shadows, in the scroll container's coordinates: pinned to the edges. */
+    linear-gradient(to right, rgba(0, 0, 0, 0.1), rgba(0, 0, 0, 0)),
+    linear-gradient(to left, rgba(0, 0, 0, 0.1), rgba(0, 0, 0, 0));
+  background-position: left center, right center, left center, right center;
+  background-repeat: no-repeat;
+  background-size:
+    28px 100%,
+    28px 100%,
+    14px 100%,
+    14px 100%;
+  background-attachment: local, local, scroll, scroll;
 }
 
 .block-table {
@@ -290,6 +314,11 @@
 }
 
 .block-chart-track {
+  /* Explicitly block: this is a <span>, and an inline box ignores width and
+     height outright. It only measured correctly because the row happens to
+     be a grid (which blockifies its children) - relying on that made the
+     bar inside it collapse to 0x0 and the chart render empty. */
+  display: block;
   height: 10px;
   background: var(--color-surface-subtle);
   border-radius: var(--radius-full);
@@ -297,7 +326,11 @@
 }
 
 .block-chart-bar {
+  /* Also a <span>, and not a grid or flex item, so it needs `display: block`
+     for its percentage width/height to apply at all. */
+  display: block;
   height: 100%;
+  min-width: 2px;
   background: var(--color-brand);
   border-radius: var(--radius-full);
 }

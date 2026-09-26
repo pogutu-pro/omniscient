@@ -15,22 +15,22 @@ interface Props {
 function PanelHeader({
   providerName,
   isStreaming,
+  isWriting,
   onClose,
 }: {
   providerName: string | null;
   isStreaming: boolean;
+  isWriting: boolean;
   onClose?: () => void;
 }) {
   return (
     <div className="panel-header">
       <div>
         <h2>Activity</h2>
-        {providerName && (
-          <p className="activity-panel-subtitle">
-            {isStreaming ? <span className="activity-live-dot" /> : null}
-            {providerName}
-          </p>
-        )}
+        <p className="activity-panel-subtitle">
+          {isStreaming && <span className="activity-live-dot" />}
+          {isStreaming ? (isWriting ? 'Writing the reply' : 'Working') : (providerName ?? 'Ready')}
+        </p>
       </div>
       {onClose && (
         <button type="button" className="btn btn-ghost btn-sm" onClick={onClose} aria-label="Close activity">
@@ -45,7 +45,7 @@ export function ActivityPanel({ events, isStreaming, isWriting, providerName, mo
   return (
     <>
       <aside className="activity-panel-desktop">
-        <PanelHeader providerName={providerName} isStreaming={isStreaming} />
+        <PanelHeader providerName={providerName} isStreaming={isStreaming} isWriting={isWriting} />
         <div className="panel-body">
           <ExecutionTrace events={events} isStreaming={isStreaming} isWriting={isWriting} />
         </div>
@@ -61,7 +61,12 @@ export function ActivityPanel({ events, isStreaming, isWriting, providerName, mo
             onClick={(e) => e.stopPropagation()}
           >
             <div className="sheet-handle" />
-            <PanelHeader providerName={providerName} isStreaming={isStreaming} onClose={onCloseMobile} />
+            <PanelHeader
+              providerName={providerName}
+              isStreaming={isStreaming}
+              isWriting={isWriting}
+              onClose={onCloseMobile}
+            />
             <div className="panel-body">
               <ExecutionTrace events={events} isStreaming={isStreaming} isWriting={isWriting} />
             </div>

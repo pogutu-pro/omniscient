@@ -24,8 +24,7 @@ from app.schemas.content_blocks import (
     FileBlock,
     FileItem,
     ListBlock,
-    ListItem,
-    TableBlock,
+    ListItem,    TableBlock,
     TableColumn,
 )
 
@@ -105,26 +104,37 @@ def _hostel_card(hostel: dict) -> list[ContentBlock]:
 def _timetable_table(entries: list[dict]) -> list[ContentBlock]:
     if not entries:
         return []
+    # The cohort only changes a few times down the list, so repeating it on
+    # every row is noise in a chat table. It is printed on the first row of
+    # each block instead, which is still enough for a student to see whose
+    # grid the whole table below belongs to.
+    rows: list[dict] = []
+    previous_group: str | None = None
+    for e in entries:
+        group = " · ".join(part for part in (e.get("year_group"), e.get("stream")) if part)
+        rows.append(
+            {
+                "day": _DAY_NAMES[e["day_of_week"]],
+                "time": f"{e['start_time']} - {e['end_time']}",
+                "cohort": group if group != previous_group else "",
+                "course": f"{e['course_code']} · {e['course_name']}",
+                "venue": e["venue"],
+                "type": e["session_type"],
+            }
+        )
+        previous_group = group
     return [
         TableBlock(
             title="Class timetable",
             columns=[
                 TableColumn(key="day", label="Day"),
                 TableColumn(key="time", label="Time"),
+                TableColumn(key="cohort", label="Year group"),
                 TableColumn(key="course", label="Course"),
                 TableColumn(key="venue", label="Venue"),
                 TableColumn(key="type", label="Type"),
             ],
-            rows=[
-                {
-                    "day": _DAY_NAMES[e["day_of_week"]],
-                    "time": f"{e['start_time']} - {e['end_time']}",
-                    "course": f"{e['course_code']} · {e['course_name']}",
-                    "venue": e["venue"],
-                    "type": e["session_type"],
-                }
-                for e in entries
-            ],
+            rows=rows,
         )
     ]
 
@@ -193,10 +203,63 @@ def _complaint_card(complaint: dict, *, title: str) -> list[ContentBlock]:
     ]
 
 
+def _academic_calendar_table(payload: dict) -> list[ContentBlock]:
+    """The trimester calendar, with the running term called out.
+
+    `provisional` is surfaced rather than hidden, because a published plan is
+    not a confirmed date and the whole point of asking the tool was to find
+    out which it is.
+    """
+    terms = payload.get("terms") or []
+    if not terms:
+        return []
+    running = payload.get("current_trimester")
+    rows = []
+    for term in terms:
+        period = f"{term.get('start_date', '')} to {term.get('end_date', '')}".strip()
+        rows.append(
+            {
+                "term": term.get("label") or f"Semester {term.get('trimester')}",
+                "period": period,
+                "reporting": term["reporting_date"] or "To be announced",
+                "status": "Running now" if term.get("trimester") == running else "",
+            }
+        )
+    blocks: list[ContentBlock] = [
+        TableBlock(
+            title=f"Academic calendar {terms[0].get('academic_year', '')}".strip(),
+            columns=[
+                TableColumn(key="term", label="Term"),
+                TableColumn(key="period", label="Usual period"),
+                TableColumn(key="reporting", label="Reporting"),
+                TableColumn(key="status", label="Status"),
+            ],
+            rows=rows,
+        )
+    ]
+    if not payload.get("dates_confirmed", True):
+        blocks.append(
+            ListBlock(
+                title="These dates may still move",
+                items=[
+                    ListItem(
+                        title="Confirm before you plan around them",
+                        description=(
+                            "The periods above are DeKUT's usual trimester pattern. Actual reporting and "
+                            "resumption dates are set per programme, school and intake, and can change."
+                        ),
+                    )
+                ],
+            )
+        )
+    return blocks
+
+
 _BUILDERS = {
     "search_hostels": _hostel_table_and_chart,
     "get_hostel": _hostel_card,
     "get_timetable": _timetable_table,
+    "get_academic_calendar": _academic_calendar_table,
     "list_academic_deadlines": _deadlines_list,
     "search_past_papers": _past_papers_file_block,
     "get_past_paper": _single_past_paper_file_block,

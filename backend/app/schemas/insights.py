@@ -16,5 +16,13 @@ class InsightsOut(BaseModel):
     total_chat_sessions: int
     total_messages: int
     intent_counts: dict[str, int]
+    # Thumbs-up / thumbs-down totals across all students, and the net of
+    # them. Real captured signal, read from message_ratings - not a claim
+    # that anything is being retrained.
+    answer_rating_up: int
+    answer_rating_down: int
+    # Total times an answer was shared. Copying is not counted - sharing is
+    # the point at which an answer leaves the app.
+    total_shares: int
     complaint_category_counts: dict[str, int]
     complaint_status_counts: dict[str, int]

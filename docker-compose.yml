@@ -1,54 +1,195 @@
+# Production stack for a single Oracle Compute instance.
+#
+#   caddy     -> TLS termination, only container with a published port
+#   frontend  -> static SPA served by nginx
+#   backend   -> FastAPI/uvicorn, runs migrations on boot
+#   db        -> PostgreSQL 16 + pgvector
+#
+# The development compose file (docker-compose.dev.yml) keeps local
+# conveniences this one deliberately drops: no seeded demo data, no
+# database port published to the host, and no plaintext HTTP.
+#
+# Memory limits are not optional here. A1.Flex bills memory per GB-hour,
+# and the whole instance is only 12 GB, so an unbounded Postgres or a
+# runaway embedder can get the box OOM-killed — which takes the site
+# down and, on a free-tier-adjacent tenancy, is the kind of event that
+# precedes a reclamation. The caps sum to roughly 4.5 GB of a 12 GB
+# budget, leaving ample headroom for page cache.
+
+x-logging: &logging
+  driver: json-file
+  options:
+    # Unbounded logs are a slow disk leak on a small boot volume.
+    max-size: "10m"
+    max-file: "3"
+
 services:
   db:
-    image: postgres:16-alpine
+    # The pgvector image, not stock postgres: the extension is compiled
+    # in, so `CREATE EXTENSION vector` works without a superuser build
+    # step at boot.
+    image: pgvector/pgvector:pg16
     restart: unless-stopped
+    env_file: [.env]
     environment:
-      POSTGRES_USER: omniscient
-      POSTGRES_PASSWORD: omniscient
-      POSTGRES_DB: omniscient
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in .env}
+      # Deterministic collation, so an index built on one machine sorts
+      # the same on another. Without this, text ordering can differ
+      # between environments and query plans quietly change.
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
     volumes:
-      - omniscient_db_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
+      - db_data:/var/lib/postgresql/data
+    # No `ports:` on purpose. Postgres is reachable only from the compose
+    # network, so a mistake in a firewall rule cannot expose the
+    # database to the internet.
+    expose:
+      - "5432"
+    command:
+      - postgres
+      - -c
+      - shared_buffers=256MB
+      - -c
+      - effective_cache_size=768MB
+      # 12 GB of RAM shared with the app containers; this ceiling keeps
+      # the query planner honest about what is actually available.
+      - -c
+      - work_mem=8MB
+      - -c
+      - maintenance_work_mem=64MB
+      - -c
+      - max_connections=50
+      # The rate limiter is in-process, so connection counts stay low;
+      # this is a backstop against a leak, not a tuning target.
+      - -c
+      - idle_in_transaction_session_timeout=60s
+      - -c
+      - log_min_duration_statement=1000
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U omniscient -d omniscient"]
-      interval: 5s
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
       timeout: 5s
-      retries: 10
+      retries: 5
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+    logging: *logging
 
   backend:
-    build:
-      context: ./backend
+    # Overridable so a rollback can name the exact image that is running
+    # now, rather than relying on a mutable `latest`.
+    image: ${BACKEND_IMAGE:-ghcr.io/pogutu-pro/omniscient-backend:latest}
     restart: unless-stopped
-    env_file:
-      - .env
+    env_file: [.env]
     environment:
-      DATABASE_URL: postgresql+asyncpg://omniscient:omniscient@db:5432/omniscient
-      DATABASE_URL_SYNC: postgresql+psycopg2://omniscient:omniscient@db:5432/omniscient
+      # Overrides the .env values, because these two must address the
+      # `db` service by its compose network name rather than by whatever
+      # host the developer had.
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:?set POSTGRES_USER in .env}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:?set POSTGRES_DB in .env}
+      DATABASE_URL_SYNC: postgresql+psycopg2://${POSTGRES_USER:?set POSTGRES_USER in .env}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:?set POSTGRES_DB in .env}
+      # Set explicitly rather than inherited. The .env.example default is
+      # relative to a laptop's repo root, and inside a container the
+      # working directory is /app — so inheriting it would silently point
+      # at a nonexistent path, and a fallback to local storage would look
+      # like it worked while writing into a throwaway directory. Ignored
+      # entirely when STORAGE_PROVIDER=s3.
       STORAGE_LOCAL_PATH: /app/var/storage
     depends_on:
       db:
         condition: service_healthy
-    ports:
-      - "8000:8000"
+    expose:
+      - "8000"
     volumes:
-      - omniscient_storage:/app/var/storage
+      # Only read when STORAGE_PROVIDER=local, but declared regardless so
+      # switching provider is a one-line .env change rather than a compose
+      # change. Without it, uploaded past papers and complaint attachments
+      # land in the container's writable layer and are destroyed every time
+      # a deploy recreates the container — silently, because the upload
+      # succeeds and the download keeps working right up until the next
+      # release.
+      - storage_data:/app/var/storage
+    # Migrations run here, on boot, before uvicorn starts. Alembic takes
+    # an advisory lock, so concurrent replicas serialise instead of
+    # racing; the app refuses to serve traffic until the schema is at
+    # head, which is what stops a deploy from serving 500s against a
+    # half-migrated database.
+    #
+    # No `seed` step: production starts empty. Demo data is a
+    # development-only convenience (see docker-compose.dev.yml).
     command: >
       sh -c "alembic upgrade head &&
-             python -m app.scripts_entry seed --if-empty &&
-             uvicorn app.main:app --host 0.0.0.0 --port 8000"
+             exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --no-server-header"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          # Room for the ONNX model plus inference scratch space. This is
+          # the container that would be killed first if the box is tight.
+          memory: 1536m
+    logging: *logging
 
   frontend:
-    build:
-      context: ./frontend
-      args:
-        VITE_API_URL: http://localhost:8000
+    image: ${FRONTEND_IMAGE:-ghcr.io/pogutu-pro/omniscient-frontend:latest}
     restart: unless-stopped
     depends_on:
       - backend
+    expose:
+      - "80"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+    logging: *logging
+
+  caddy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    depends_on:
+      - backend
+      - frontend
     ports:
-      - "5173:80"
+      # 80/443 are the only ports published to the internet. Everything
+      # else is reachable only over the compose network.
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      ACME_EMAIL: ${ACME_EMAIL:-admin@omniscient.co.ke}
+    volumes:
+      - ./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # Certificate state must survive a restart, or every restart would
+      # burn a Let's Encrypt issuance against a strict rate limit.
+      - caddy_data:/data
+      - caddy_config:/config
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+      # Binding 80/443 needs this one; nothing else is granted.
+      - NET_BIND_SERVICE
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+    logging: *logging
 
 volumes:
-  omniscient_db_data:
-  omniscient_storage:
+  db_data:
+  # Ignored when STORAGE_PROVIDER=s3 (files live in R2), but declared so
+  # a local-storage deployment is durable rather than accidentally ephemeral.
+  storage_data:
+  caddy_data:
+  caddy_config:

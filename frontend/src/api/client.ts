@@ -1,5 +1,7 @@
 import type {
   AcademicDeadline,
+  AcademicTerm,
+  AcademicsMeta,
   AdminInsights,
   AuthResponse,
   ChatMessage,
@@ -9,8 +11,11 @@ import type {
   Hostel,
   PastPaper,
   Programme,
+  ReindexAccepted,
+  ReindexStatus,
   Student,
   TimetableEntry,
+  TimetableImportReport,
   TraceEvent,
 } from '../types';
 
@@ -65,6 +70,20 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+// --- Message ratings ---
+// A thumbs verdict is one row per (message, student) server-side, so
+// re-rating replaces the previous one and DELETE is what "pressed the lit
+// thumb again" sends. `null` therefore means "no verdict", not "0".
+export const ratingsApi = {
+  set: (messageId: string, rating: 1 | -1) =>
+    request<{ message_id: string; rating: 1 | -1 }>(`/api/chat/messages/${messageId}/rating`, {
+      method: 'PUT',
+      body: JSON.stringify({ rating }),
+    }),
+  clear: (messageId: string) =>
+    request<void>(`/api/chat/messages/${messageId}/rating`, { method: 'DELETE' }),
+};
+
 // --- Auth ---
 export const authApi = {
   register: (data: {
@@ -100,19 +119,52 @@ export const housingApi = {
     return request<Hostel[]>(`/api/housing/hostels?${query.toString()}`);
   },
   get: (id: string) => request<Hostel>(`/api/housing/hostels/${id}`),
+  areas: () => request<{ areas: string[] }>('/api/housing/areas'),
 };
 
 // --- Academics ---
 export const academicsApi = {
-  timetable: (params: { programme_code?: string; day_of_week?: number } = {}) => {
+  meta: () => request<AcademicsMeta>('/api/academics/meta'),
+  terms: (academic_year?: string) => {
+    const query = new URLSearchParams();
+    if (academic_year) query.set('academic_year', academic_year);
+    return request<AcademicTerm[]>(`/api/academics/terms?${query.toString()}`);
+  },
+  currentTerm: () => request<AcademicTerm>('/api/academics/terms/current'),
+  courses: (params: { programme_code?: string; year_of_study?: number } = {}) => {
     const query = new URLSearchParams();
     if (params.programme_code) query.set('programme_code', params.programme_code);
+    if (params.year_of_study) query.set('year_of_study', String(params.year_of_study));
+    return request<Course[]>(`/api/academics/courses?${query.toString()}`);
+  },
+  timetable: (
+    params: {
+      programme_code?: string;
+      year_of_study?: number;
+      day_of_week?: number;
+      academic_year?: string;
+      year_group?: string;
+      stream?: string;
+      course_code?: string;
+    } = {}
+  ) => {
+    const query = new URLSearchParams();
+    if (params.programme_code) query.set('programme_code', params.programme_code);
+    if (params.year_of_study !== undefined) query.set('year_of_study', String(params.year_of_study));
     if (params.day_of_week !== undefined) query.set('day_of_week', String(params.day_of_week));
+    if (params.academic_year) query.set('academic_year', params.academic_year);
+    if (params.year_group) query.set('year_group', params.year_group);
+    if (params.stream) query.set('stream', params.stream);
+    if (params.course_code) query.set('course_code', params.course_code);
     return request<TimetableEntry[]>(`/api/academics/timetable?${query.toString()}`);
   },
-  deadlines: (programme_code?: string) => {
+  deadlines: (params: { programme_code?: string; category?: string; limit?: number; include_past?: boolean } | string = {}) => {
+    const p = typeof params === 'string' ? { programme_code: params } : params;
     const query = new URLSearchParams();
-    if (programme_code) query.set('programme_code', programme_code);
+    if (p.programme_code) query.set('programme_code', p.programme_code);
+    if (p.category) query.set('category', p.category);
+    if (p.limit) query.set('limit', String(p.limit));
+    if (p.include_past) query.set('include_past', 'true');
     return request<AcademicDeadline[]>(`/api/academics/deadlines?${query.toString()}`);
   },
 };
@@ -196,6 +248,10 @@ export const adminApi = {
 
   createTimetableEntry: (data: {
     course_id: string;
+    academic_year: string;
+    year_group: string;
+    semester: number;
+    stream?: string;
     day_of_week: number;
     start_time: string;
     end_time: string;
@@ -203,6 +259,42 @@ export const adminApi = {
     session_type?: string;
   }) => request<TimetableEntry>('/api/admin/timetable', { method: 'POST', body: JSON.stringify(data) }),
   deleteTimetableEntry: (id: string) => request<void>(`/api/admin/timetable/${id}`, { method: 'DELETE' }),
+  upsertTerm: (data: {
+    academic_year: string;
+    trimester: number;
+    label?: string;
+    start_date: string;
+    end_date: string;
+    reporting_date?: string | null;
+    provisional?: boolean;
+    notes?: string;
+    programme_code?: string;
+  }) => request<AcademicTerm>('/api/admin/terms', { method: 'PUT', body: JSON.stringify(data) }),
+
+  importTimetable: async (
+    file: File,
+    options: { programme_code?: string; academic_year?: string; overwrite?: boolean; prune?: boolean } = {}
+  ) => {
+    const token = getToken();
+    const headers: Record<string, string> = {};
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const body = new FormData();
+    body.append('file', file);
+    if (options.programme_code) body.append('programme_code', options.programme_code);
+    if (options.academic_year) body.append('academic_year', options.academic_year);
+    if (options.overwrite) body.append('overwrite', 'true');
+    if (options.prune) body.append('prune', 'true');
+    const response = await fetch(`${API_URL}/api/admin/timetable/import`, { method: 'POST', headers, body });
+    if (!response.ok) {
+      let detail = response.statusText;
+      try {
+        const parsed = await response.json();
+        detail = parsed.detail ?? detail;
+      } catch {}
+      throw new ApiError(response.status, typeof detail === 'string' ? detail : JSON.stringify(detail));
+    }
+    return response.json() as Promise<TimetableImportReport>;
+  },
 
   createDeadline: (data: { programme_id?: string | null; title: string; description?: string; category?: string; due_date: string }) =>
     request<AcademicDeadline>('/api/admin/deadlines', { method: 'POST', body: JSON.stringify(data) }),
@@ -218,6 +310,12 @@ export const adminApi = {
     file_name: string;
   }) => request<PastPaper>('/api/admin/past-papers', { method: 'POST', body: JSON.stringify(data) }),
   deletePastPaper: (id: string) => request<void>(`/api/admin/past-papers/${id}`, { method: 'DELETE' }),
+
+  // Rebuilds the past-paper vector index. Returns as soon as the job is
+  // queued, so the caller polls reindexStatus rather than awaiting it.
+  reindexPastPapers: (data: { force?: boolean; concurrency?: number } = {}) =>
+    request<ReindexAccepted>('/api/admin/rag/reindex', { method: 'POST', body: JSON.stringify(data) }),
+  reindexStatus: () => request<ReindexStatus>('/api/admin/rag/index-status'),
 
   listComplaints: (status?: string) => {
     const query = new URLSearchParams();

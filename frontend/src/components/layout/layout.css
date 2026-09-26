@@ -112,10 +112,10 @@
   }
 }
 
+/* Re-points the shared .brand-logo size token rather than restating width
+   and height, so the mark stays one class in global.css. */
 .topbar-brand-mark {
-  width: 24px;
-  height: 24px;
-  font-size: var(--text-xs);
+  --brand-logo-size: var(--brand-logo-size-sm);
 }
 
 .topbar-icon-btn {
@@ -190,20 +190,6 @@
   }
 }
 
-.sidebar-brand-mark {
-  width: 28px;
-  height: 28px;
-  border-radius: var(--radius-md);
-  background: var(--color-brand);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-  font-weight: var(--font-semibold);
-  font-size: var(--text-sm);
-  flex-shrink: 0;
-}
-
 .sidebar-new-chat {
   display: flex;
   align-items: center;
@@ -259,6 +245,15 @@
   padding: var(--space-3) var(--space-2) var(--space-1);
 }
 
+/* ---------- Navigation weight ----------
+   Primary navigation is the one place a student looks to orient themselves,
+   so it is set heavier than body copy: semibold labels at full text colour
+   rather than medium at secondary, and a heavier icon stroke. The shared
+   icon default is 1.75, which reads as deliberately thin at nav sizes; CSS
+   `stroke-width` overrides Lucide's presentation attribute, so the icons can
+   be thickened for navigation without touching the inline icons used in
+   body copy, where a heavier stroke would look clumsy. */
+
 .sidebar-link {
   display: flex;
   align-items: center;
@@ -267,8 +262,8 @@
   padding: 0 var(--space-3);
   border-radius: var(--radius-md);
   font-size: var(--text-sm);
-  font-weight: var(--font-medium);
-  color: var(--color-text-secondary);
+  font-weight: var(--font-semibold);
+  color: var(--color-text-primary);
   text-decoration: none;
   transition: background-color var(--transition-fast), color var(--transition-fast);
 }
@@ -292,8 +287,18 @@
   font-family: inherit;
 }
 
-.sidebar-link svg {
-  flex-shrink: 0;
+.sidebar-link svg,
+.sidebar-new-chat svg {
+  stroke-width: 2.25;
+}
+
+.sidebar-group-label {
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+  color: var(--color-text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: var(--space-3) var(--space-2) var(--space-1);
 }
 
 .sidebar-footer {
@@ -334,12 +339,23 @@
   align-items: center;
   justify-content: center;
   gap: 3px;
-  color: var(--color-text-tertiary);
+  color: var(--color-text-secondary);
   text-decoration: none;
-  font-size: var(--text-xs);
-  font-weight: var(--font-medium);
+  /* Matches the sidebar's weight so the two navigations read as the same
+     system, and one step up from --text-xs: 12px was the smallest text in
+     the product and the hardest to read on a phone. */
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
   min-width: 44px;
   min-height: 44px;
+}
+
+.bottom-nav-link svg {
+  /* Slightly larger than the sidebar's, to match the label size, and a
+     heavier stroke for the same legibility reason. */
+  width: 20px;
+  height: 20px;
+  stroke-width: 2.25;
 }
 
 .bottom-nav-link.active {

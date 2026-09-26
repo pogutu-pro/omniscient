@@ -4,7 +4,6 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents import orchestrator, router
-from app.agents.providers.base import ChatTurn
 from app.agents.providers.mock_provider import MockProvider
 from app.repositories.academic_repository import SqlAcademicRepository
 from app.repositories.complaint_repository import SqlComplaintRepository
@@ -66,8 +65,11 @@ async def test_orchestrator_housing_flow_selects_search_hostels_tool(db_session:
 
     tool_calls = [e for e in events if e.type == "tool_call"]
     assert tool_calls and tool_calls[0].tool == "search_hostels"
+    # The trace says what was searched for, not just that a search ran.
+    assert tool_calls[0].arguments == {"area": "Boma", "max_budget_ksh": 8000}
     tool_results = [e for e in events if e.type == "tool_result"]
     assert tool_results[0].status == "completed"
+    assert tool_results[0].duration_ms is not None and tool_results[0].duration_ms >= 0
     answer = "".join(e.message for e in events if e.type == "answer_chunk")
     assert "hostel option" in answer
     content_blocks = [e for e in events if e.type == "content_block"]
@@ -79,7 +81,7 @@ async def test_orchestrator_housing_flow_selects_search_hostels_tool(db_session:
 
 
 async def test_orchestrator_academics_flow_selects_get_timetable_tool(db_session: AsyncSession):
-    course = await make_course(db_session)
+    await make_course(db_session)
     provider = MockProvider()
     registry = build_default_registry()
 
@@ -168,3 +170,76 @@ async def test_orchestrator_general_intent_never_calls_tools(db_session: AsyncSe
 
     assert not [e for e in events if e.type == "tool_call"]
     assert any(e.type == "done" for e in events)
+
+
+def test_public_arguments_drops_internal_keys_and_truncates():
+    """Arguments are echoed to the browser, so internal routing hints must
+    not leak and a pasted question must not be reflected back in full."""
+    from app.agents.orchestrator import _public_arguments
+
+    assert _public_arguments({"max_budget_ksh": 8000, "area": "Boma"}) == {"max_budget_ksh": 8000, "area": "Boma"}
+    assert "_is_status_check" not in _public_arguments({"_is_status_check": True, "area": "Boma"})
+    assert _public_arguments({"query": "x" * 500})["query"].endswith("…")
+    assert len(_public_arguments({"query": "x" * 500})["query"]) < 100
+    # Bounded, so a tool with many parameters cannot bloat every SSE frame.
+    assert len(_public_arguments({f"k{i}": i for i in range(50)})) == 8
+    # Lists stay JSON-serialisable for the wire.
+    assert _public_arguments({"amenities": ["wifi", "water"]}) == {"amenities": ["wifi", "water"]}
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "what about Kahawa Ridge?",
+        "Kahawa Ridge hostels",
+        "show me hostels in Nyeri View",
+        "and Near Gate A?",
+        "any in Embassy Area?",
+    ],
+)
+async def test_mock_provider_understands_a_follow_up_that_only_names_a_place(db_session: AsyncSession, message: str):
+    """A follow-up like "what about Kahawa Ridge?" carries no domain keyword.
+    Treating it as a general question answered the student with "what would
+    you like to do?" - the opposite of continuing the conversation."""
+    await make_hostel(db_session, name="Ridge Hostel", area="Kahawa Ridge", price_ksh=6000)
+    provider = MockProvider()
+
+    events = await _run_and_collect(
+        message=message,
+        history=[],
+        ctx=_ctx(db_session),
+        registry=build_default_registry(),
+        provider=provider,
+    )
+
+    tool_calls = [e for e in events if e.type == "tool_call"]
+    assert tool_calls, f"{message!r} was not routed to a tool"
+    assert tool_calls[0].tool == "search_hostels"
+    # The place the student actually named must reach the search, rather than
+    # being replaced by a remembered area.
+    assert "area" in (tool_calls[0].arguments or {})
+
+
+async def test_mock_provider_knows_the_real_dekut_localities(db_session: AsyncSession):
+    """The offline provider's area list previously held only the seeded demo
+    areas, so every real DeKUT locality resolved to nothing."""
+    from app.agents.providers.mock_provider import _extract_area
+
+    for area in ("Kahawa Ridge", "Nyeri View", "Near Gate A", "Nyaribo", "Boma"):
+        assert _extract_area(f"hostels in {area}") == area
+
+
+async def test_mock_provider_prefers_the_longest_matching_area(db_session: AsyncSession):
+    from app.agents.providers.mock_provider import _extract_area
+
+    assert _extract_area("hostels near Near Gate A") == "Near Gate A"
+
+
+async def test_a_general_question_is_still_general(db_session: AsyncSession):
+    """Rescuing follow-ups must not turn every short message into housing."""
+    provider = MockProvider()
+    result = await provider.classify_intent("thanks!", [], ["housing", "academics"])
+    assert result["intent"] == "general"
+
+    result = await provider.classify_intent("who is the vice chancellor?", [], ["housing", "academics"])
+    assert result["intent"] == "general"

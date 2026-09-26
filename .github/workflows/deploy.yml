@@ -1,0 +1,165 @@
+name: Deploy
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Image tag to deploy (defaults to the commit SHA)"
+        required: false
+        type: string
+
+# One deploy at a time. A second run must queue behind the first, not
+# race it: two `docker compose up` calls on the same host would restart
+# the same containers against each other mid-migration.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_OWNER: ${{ github.repository_owner }}
+
+jobs:
+  # 1. Publish images. Tagged releases are immutable by convention (the
+  #    tag is the version); a manual run is tagged with the commit SHA so
+  #    it can never be confused with a release.
+  publish:
+    name: Build and push images
+    runs-on: ubuntu-latest
+    outputs:
+      backend_tag: ${{ steps.meta.outputs.backend_tag }}
+      frontend_tag: ${{ steps.meta.outputs.frontend_tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve image tag
+        id: meta
+        run: |
+          if [ "${{ inputs.image_tag }}" != "" ]; then
+            tag="${{ inputs.image_tag }}"
+          elif [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            tag="${GITHUB_REF_NAME}"
+          else
+            tag="${GITHUB_SHA}"
+          fi
+          echo "backend_tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "frontend_tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "Deploying tag: ${tag}"
+
+      - name: Build and push backend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          # Both architectures, because the VM is arm64 and a developer
+          # running the image locally is almost certainly x86_64. The
+          # arm64 leg is the one that matters: it is where the ONNX
+          # runtime and the embedding model download are proven to work.
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/omniscient-backend:${{ steps.meta.outputs.backend_tag }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/omniscient-backend:latest
+          # Provenance and SBOM metadata, free with the GitHub token.
+          provenance: mode=max
+          sbom: true
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+
+      - name: Build and push frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: |
+            VITE_API_URL=https://omniscient.co.ke
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/omniscient-frontend:${{ steps.meta.outputs.frontend_tag }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/omniscient-frontend:latest
+          provenance: mode=max
+          sbom: true
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
+
+  # 2. Roll the images out over SSH.
+  #
+  #    Nothing secret lives in the repository: the key arrives as a
+  #    GitHub secret, the host key is verified against a pinned
+  #    fingerprint, and every real credential (DeepSeek, Groq, R2,
+  #    SECRET_KEY) stays in the `.env` file on the VM, written once by
+  #    hand and never touched by CI.
+  deploy:
+    name: Deploy to 84.12.101.132
+    needs: publish
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Configure SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VM_HOST }}
+          # 22 unless the VM was provisioned with a custom SSH port.
+          port: ${{ secrets.VM_SSH_PORT || 22 }}
+          username: ${{ secrets.VM_USER }}
+          key: ${{ secrets.VM_SSH_KEY }}
+          # Pin the host key so a MITM cannot silently receive the deploy
+          # key. Get the real fingerprint with:
+          #   ssh-keyscan -p 22 84.12.101.132
+          # and confirm it against the VM's console before saving it.
+          fingerprint: ${{ secrets.VM_HOST_FINGERPRINT }}
+          script_path: ./infra/deploy/deploy.sh
+          envs: IMAGE_TAG,BACKEND_IMAGE,FRONTEND_IMAGE
+          # Keep the master socket alive for the whole run: the script
+          # makes several ssh calls and re-authenticating for each one
+          # is both slow and a chance to hit MaxStartups.
+          args: "-o ServerAliveInterval=30"
+
+  # 3. Tell the world. Only after a successful rollout, so a failed
+  #    deploy never announces itself as a release.
+  smoke:
+    name: Post-deploy smoke test
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for TLS and check the API
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 30); do
+            if curl -fsS --max-time 10 https://omniscient.co.ke/api/health; then
+              echo
+              echo "Health check passed."
+              exit 0
+            fi
+            echo "Attempt $i: not up yet, waiting..."
+            sleep 10
+          done
+          echo "The API did not become healthy within 5 minutes." >&2
+          exit 1
+
+      - name: Check the SPA is served
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 10 https://omniscient.co.ke/ | grep -qi '<div id="root">' \
+            || { echo "Frontend did not return the SPA shell." >&2; exit 1; }
+          echo "Frontend OK."
+
+      - name: Check the database has the vector extension
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 10 https://omniscient.co.ke/api/health | tee /dev/stderr \
+            | grep -q '"rag_enabled":true' \
+            || { echo "RAG is not enabled in the deployed config; the pgvector feature will be dark." >&2; exit 1; }

@@ -34,7 +34,7 @@ async def test_upload_and_download_roundtrip(app_client: AsyncClient):
     )
     assert uploaded.status_code == 201
     body = uploaded.json()
-    assert body["key"].startswith(f"uploads/")
+    assert body["key"].startswith("uploads/")
 
     downloaded = await app_client.get(f"/api/files/{body['key']}")
     assert downloaded.status_code == 200

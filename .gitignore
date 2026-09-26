@@ -3,8 +3,43 @@
 .env.local
 .env.*.local
 .env.production
+# `backend/.env` is a symlink to the root .env. Ignore the link target by
+# path as well as by name, so a copy made under another name is still
+# excluded.
+backend/.env
+frontend/.env
 *.pem
 *.key
+# Also the public halves. A public key is not a secret, but an operator's
+# personal keypair has no business in an application repository, and
+# `git add .` picking one up is how that happens.
+*.pub
+*.p12
+*.pfx
+*.crt
+*.keystore
+id_rsa*
+id_ed25519*
+# Deployment credentials. Nothing under here should ever be committed;
+# the deploy key and the VM host fingerprint live in GitHub Secrets.
+infra/secrets/
+*.env.bak
+*.env.old
+*.env.save
+# Cloudflare R2 credentials, if ever exported to a file by a script.
+.r2-credentials
+# ACME account state from a host-level certbot, should it ever be used
+# alongside Caddy.
+.caddy/
+
+# --- CI ---
+# Workflow artefacts. Reports are uploaded as GitHub Actions artifacts,
+# and must not be committed alongside the code they describe.
+pytest-report.xml
+coverage.xml
+htmlcov/
+*.lcov
+node_modules/.cache/
 
 # --- Python / backend ---
 __pycache__/
@@ -17,7 +52,6 @@ env/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
-htmlcov/
 .coverage
 .coverage.*
 dist/
@@ -46,3 +80,11 @@ backend/var/storage/
 # --- Logs ---
 *.log
 logs/
+.~lock.*
+
+# --- Source material ---
+# Large binary inputs (timetables, the dataset extract) used to build demo
+# data. Not application code and not read by the build; kept out of git.
+*.docx
+*.xlsx
+*.pdf

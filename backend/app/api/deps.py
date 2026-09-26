@@ -12,10 +12,16 @@ from app.core.security import decode_access_token
 from app.db.session import get_db
 from app.models.student import Student
 from app.repositories.academic_repository import AcademicRepository, SqlAcademicRepository
+from app.repositories.chunk_repository import ChunkRepository, SqlChunkRepository
 from app.repositories.complaint_repository import ComplaintRepository, SqlComplaintRepository
 from app.repositories.hostel_repository import HostelRepository, get_hostel_repository
 from app.repositories.past_paper_repository import PastPaperRepository, SqlPastPaperRepository
 from app.repositories.student_repository import SqlStudentRepository, StudentRepository
+from app.services.embedding_service import EmbeddingService
+from app.services.paper_index_service import PaperIndexService
+from app.services.paper_search_service import PaperSearchService
+from app.services.storage.base import StorageBackend
+from app.services.storage.factory import get_storage_backend
 from app.tools.build import build_default_registry
 from app.tools.registry import ToolContext, ToolRegistry
 
@@ -29,6 +35,35 @@ def get_settings_dep() -> Settings:
 async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
     async for session in get_db():
         yield session
+
+
+def get_storage_dep(settings: Settings = Depends(get_settings_dep)) -> StorageBackend:
+    return get_storage_backend(settings)
+
+
+def get_embedding_service(settings: Settings = Depends(get_settings_dep)) -> EmbeddingService:
+    return EmbeddingService(settings)
+
+
+def get_chunk_repo(session: AsyncSession = Depends(get_db_session)) -> ChunkRepository:
+    return SqlChunkRepository(session)
+
+
+def get_paper_search_service(
+    session: AsyncSession = Depends(get_db_session),
+    embeddings: EmbeddingService = Depends(get_embedding_service),
+    settings: Settings = Depends(get_settings_dep),
+) -> PaperSearchService:
+    return PaperSearchService(session, embeddings, settings)
+
+
+def get_paper_index_service(
+    session: AsyncSession = Depends(get_db_session),
+    storage: StorageBackend = Depends(get_storage_dep),
+    embeddings: EmbeddingService = Depends(get_embedding_service),
+    settings: Settings = Depends(get_settings_dep),
+) -> PaperIndexService:
+    return PaperIndexService(session, storage, embeddings, settings)
 
 
 def get_student_repository(session: AsyncSession = Depends(get_db_session)) -> StudentRepository:
@@ -103,6 +138,7 @@ async def get_tool_context(
     academic_repo: AcademicRepository = Depends(get_academic_repo),
     past_paper_repo: PastPaperRepository = Depends(get_past_paper_repo),
     complaint_repo: ComplaintRepository = Depends(get_complaint_repo),
+    paper_search: PaperSearchService = Depends(get_paper_search_service),
     student: Student | None = Depends(get_optional_student),
 ) -> ToolContext:
     return ToolContext(
@@ -111,4 +147,5 @@ async def get_tool_context(
         past_paper_repo=past_paper_repo,
         complaint_repo=complaint_repo,
         student_id=student.id if student else None,
+        paper_search=paper_search,
     )

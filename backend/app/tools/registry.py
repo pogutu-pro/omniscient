@@ -27,6 +27,7 @@ from app.repositories.academic_repository import AcademicRepository
 from app.repositories.complaint_repository import ComplaintRepository
 from app.repositories.hostel_repository import HostelRepository
 from app.repositories.past_paper_repository import PastPaperRepository
+from app.services.paper_search_service import PaperSearchService
 
 
 class ToolAuthorizationError(Exception):
@@ -39,6 +40,10 @@ class ToolContext:
 
     Deliberately narrow: repositories (never raw DB sessions) plus the
     caller's authenticated student id, if any. No settings, no LLM client.
+
+    `paper_search` is optional and defaults to None so that a context
+    built without retrieval still works — the RAG tool checks for it and
+    reports "not available" rather than the whole agent failing to start.
     """
 
     hostel_repo: HostelRepository
@@ -46,6 +51,7 @@ class ToolContext:
     past_paper_repo: PastPaperRepository
     complaint_repo: ComplaintRepository
     student_id: str | None = None
+    paper_search: PaperSearchService | None = None
 
     def require_student(self) -> str:
         if not self.student_id:

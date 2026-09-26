@@ -1,0 +1,89 @@
+# Local development stack. Use this one; docker-compose.yml is production.
+#
+#   cp .env.example .env && docker compose -f docker-compose.dev.yml up -d --build
+#
+# Differences from production, all deliberate:
+#   * images are built from source, so a local edit takes effect without
+#     a registry round trip
+#   * demo data is seeded on first boot, so there is something to look at
+#   * Postgres and the API are published to localhost for debugging
+#   * no TLS terminator in front
+#
+# pgvector runs here too, so RAG behaves the same locally as it does in
+# production — an index that only works on one of the two is worse than
+# no index at all.
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "2"
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: omniscient
+      POSTGRES_PASSWORD: omniscient
+      POSTGRES_DB: omniscient
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U omniscient -d omniscient"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://omniscient:omniscient@db:5432/omniscient
+      DATABASE_URL_SYNC: postgresql+psycopg2://omniscient:omniscient@db:5432/omniscient
+      STORAGE_LOCAL_PATH: /app/var/storage
+      # A model download at runtime would work locally but is exactly
+      # what the production image bakes in, so mirror that here to keep
+      # the two honest.
+      FASTEMBED_CACHE_PATH: /app/.fastembed_cache
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    volumes:
+      # Source is mounted so a change is a page reload, not an image
+      # rebuild. The cache directory is masked so a model downloaded into
+      # a previous build is reused instead of re-fetched.
+      - ./backend/app:/app/app
+      - ./backend/migrations:/app/migrations
+      - storage_data:/app/var/storage
+    command: >
+      sh -c "alembic upgrade head &&
+             python -m app.scripts_entry seed --if-empty &&
+             exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --no-server-header"
+    logging: *logging
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: http://localhost:8000
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "5173:80"
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/index.html:/app/index.html
+    logging: *logging
+
+volumes:
+  db_data:
+  storage_data:

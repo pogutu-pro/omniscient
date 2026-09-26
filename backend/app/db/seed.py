@@ -10,21 +10,33 @@ would instead carry `source="rumia"`).
 from __future__ import annotations
 
 import datetime as dt
+from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
 from app.core.security import hash_password
-from app.models.academics import AcademicDeadline, Course, Programme, TimetableEntry
+from app.models.academics import AcademicDeadline, AcademicTerm, Course, Programme, TimetableEntry
 from app.models.complaint import Complaint
 from app.models.housing import Hostel
 from app.models.past_paper import PastPaper
 from app.models.student import Student
 from app.repositories.complaint_repository import generate_reference_code
+from app.repositories.academic_repository import default_terms
 from app.services.storage.factory import get_storage_backend
+from app.services.timetable_import import import_timetable, parse_timetable_workbook
 
 TODAY = dt.date.today()
+
+# The term the demo timetable is filed under, in the department's "2026/2027"
+# style. A DeKUT academic year opens in September, so from September onwards
+# the new year has started; before that we are still in the one that began
+# last September. Held in one place because the Academics screen reads it
+# back to pick the default year-group filter, so seeding and querying cannot
+# drift apart.
+_academic_year_start = TODAY.year if TODAY.month >= 9 else TODAY.year - 1
+DEMO_ACADEMIC_YEAR = f"{_academic_year_start}/{_academic_year_start + 1}"
 
 
 async def is_seeded(session: AsyncSession) -> bool:
@@ -74,11 +86,11 @@ async def seed(session: AsyncSession, settings: Settings) -> None:
 
     # --- Courses ---
     courses = [
-        Course(programme_id=programmes["BCS"].id, code="SCS 2101", name="Database Systems", year_of_study=2, semester=1),
-        Course(programme_id=programmes["BCS"].id, code="SCS 2205", name="Data Structures & Algorithms", year_of_study=2, semester=1),
-        Course(programme_id=programmes["BCS"].id, code="SCS 3110", name="Operating Systems", year_of_study=3, semester=1),
-        Course(programme_id=programmes["BCS"].id, code="SCS 3214", name="Software Engineering", year_of_study=3, semester=2),
-        Course(programme_id=programmes["BCS"].id, code="SCS 2308", name="Computer Networks", year_of_study=2, semester=2),
+        Course(programme_id=programmes["BCS"].id, code="SCS 2101", name="Database Systems", year_of_study=2, semester=1, lecturer="Dr. Moso", lecture_hours=2, lab_hours=3, class_size=140),
+        Course(programme_id=programmes["BCS"].id, code="SCS 2205", name="Data Structures & Algorithms", year_of_study=2, semester=1, lecturer="Dr. Kituku", lecture_hours=2, lab_hours=3, class_size=140),
+        Course(programme_id=programmes["BCS"].id, code="SCS 3110", name="Operating Systems", year_of_study=3, semester=1, lecturer="Dr. Naivasha", lecture_hours=2, lab_hours=3, class_size=90),
+        Course(programme_id=programmes["BCS"].id, code="SCS 3214", name="Software Engineering", year_of_study=3, semester=2, lecturer="Dr. Musumba", lecture_hours=3, class_size=90),
+        Course(programme_id=programmes["BCS"].id, code="SCS 2308", name="Computer Networks", year_of_study=2, semester=2, lecturer="Dr. Naivasha", lecture_hours=2, lab_hours=3, class_size=140),
         Course(programme_id=programmes["BIT"].id, code="SIT 2102", name="Web Application Development", year_of_study=2, semester=1),
         Course(programme_id=programmes["BIT"].id, code="SIT 3105", name="Systems Analysis & Design", year_of_study=3, semester=1),
         Course(programme_id=programmes["BBIT"].id, code="SBB 2101", name="Business Information Systems", year_of_study=2, semester=1),
@@ -90,19 +102,88 @@ async def seed(session: AsyncSession, settings: Settings) -> None:
     course_by_code = {c.code: c for c in courses}
 
     # --- Timetable (BCS year 2, semester 1, as the primary demo path) ---
+    # `term_sessions` keeps the cohort on each row in step with the course, so
+    # a session is never filed under a year group its course does not belong
+    # to. These are the synthetic demo rows; the real departmental timetable
+    # is loaded by `python -m app.scripts_entry import-timetable`.
+    term_sessions = [
+        ("SCS 2101", 0, "08:00", "10:00", "Block C - LT1", "lecture"),
+        ("SCS 2101", 2, "14:00", "17:00", "Comp Lab 2", "lab"),
+        ("SCS 2205", 0, "10:00", "12:00", "Block C - LT2", "lecture"),
+        ("SCS 2205", 3, "08:00", "10:00", "Block C - LT2", "tutorial"),
+        ("SCS 2308", 1, "12:00", "14:00", "Block D - LT1", "lecture"),
+        ("SCS 3110", 1, "08:00", "10:00", "Block C - LT3", "lecture"),
+        ("SCS 3110", 4, "14:00", "17:00", "Comp Lab 1", "lab"),
+        ("SCS 3214", 2, "10:00", "12:00", "Block C - LT1", "lecture"),
+        ("SIT 2102", 4, "08:00", "10:00", "Comp Lab 3", "lab"),
+        ("SEE 2201", 3, "10:00", "12:00", "Engineering Block - LT2", "lecture"),
+    ]
     timetable = [
-        TimetableEntry(course_id=course_by_code["SCS 2101"].id, day_of_week=0, start_time="08:00", end_time="10:00", venue="Block C - LT1", session_type="lecture"),
-        TimetableEntry(course_id=course_by_code["SCS 2101"].id, day_of_week=2, start_time="14:00", end_time="17:00", venue="Comp Lab 2", session_type="lab"),
-        TimetableEntry(course_id=course_by_code["SCS 2205"].id, day_of_week=0, start_time="10:00", end_time="12:00", venue="Block C - LT2", session_type="lecture"),
-        TimetableEntry(course_id=course_by_code["SCS 2205"].id, day_of_week=3, start_time="08:00", end_time="10:00", venue="Block C - LT2", session_type="tutorial"),
-        TimetableEntry(course_id=course_by_code["SCS 2308"].id, day_of_week=1, start_time="12:00", end_time="14:00", venue="Block D - LT1", session_type="lecture"),
-        TimetableEntry(course_id=course_by_code["SCS 3110"].id, day_of_week=1, start_time="08:00", end_time="10:00", venue="Block C - LT3", session_type="lecture"),
-        TimetableEntry(course_id=course_by_code["SCS 3110"].id, day_of_week=4, start_time="14:00", end_time="17:00", venue="Comp Lab 1", session_type="lab"),
-        TimetableEntry(course_id=course_by_code["SCS 3214"].id, day_of_week=2, start_time="10:00", end_time="12:00", venue="Block C - LT1", session_type="lecture"),
-        TimetableEntry(course_id=course_by_code["SIT 2102"].id, day_of_week=4, start_time="08:00", end_time="10:00", venue="Comp Lab 3", session_type="lab"),
-        TimetableEntry(course_id=course_by_code["SEE 2201"].id, day_of_week=3, start_time="10:00", end_time="12:00", venue="Engineering Block - LT2", session_type="lecture"),
+        TimetableEntry(
+            course_id=course_by_code[code].id,
+            day_of_week=day,
+            start_time=start,
+            end_time=end,
+            venue=venue,
+            session_type=session_type,
+            academic_year=DEMO_ACADEMIC_YEAR,
+            semester=course_by_code[code].semester,
+            year_group=f"{course_by_code[code].year_of_study}.{course_by_code[code].semester}",
+        )
+        for code, day, start, end, venue, session_type in term_sessions
     ]
     session.add_all(timetable)
+    await session.flush()
+
+    # If the real departmental teaching timetable spreadsheet is present, import it
+    # so the database gets the full authentic timetable (30 courses, 47 sessions,
+    # real lecturers, venues, class sizes, cohort streams).
+    timetable_file = None
+    for candidate in [
+        Path("CS SEPT-DEC 2026 TEACHING TIMETABLE_DRAFT 3.xlsx"),
+        Path(__file__).resolve().parents[3] / "CS SEPT-DEC 2026 TEACHING TIMETABLE_DRAFT 3.xlsx",
+        Path(__file__).resolve().parents[2] / "CS SEPT-DEC 2026 TEACHING TIMETABLE_DRAFT 3.xlsx",
+    ]:
+        if candidate.is_file():
+            timetable_file = candidate
+            break
+
+    if timetable_file:
+        try:
+            parsed = parse_timetable_workbook(str(timetable_file))
+            await import_timetable(session, parsed, "BCS", overwrite_course_detail=True)
+        except Exception:
+            pass
+
+    # --- Trimester calendar ---
+    # DeKUT's year has three trimesters. The periods are the published rule
+    # and are seeded so the assistant can answer without an admin having
+    # entered anything; the real reporting and resumption dates are not a
+    # rule, so they are left empty and the rows are marked provisional
+    # rather than inventing dates a student might plan a train around.
+    existing_terms = {
+        (t.academic_year, t.trimester): t
+        for t in (await session.execute(select(AcademicTerm))).scalars().all()
+    }
+    seeded_terms = []
+    for term in default_terms():
+        key = (term.academic_year, term.trimester)
+        if key in existing_terms:
+            # An admin's corrected dates win over the seeded pattern.
+            continue
+        seeded_terms.append(
+            AcademicTerm(
+                academic_year=term.academic_year,
+                trimester=term.trimester,
+                label=term.label,
+                start_date=term.start_date,
+                end_date=term.end_date,
+                reporting_date=term.reporting_date,
+                provisional=term.provisional,
+                notes=term.notes,
+            )
+        )
+    session.add_all(seeded_terms)
 
     # --- Academic deadlines ---
     deadlines = [

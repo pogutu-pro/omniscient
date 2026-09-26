@@ -1,7 +1,10 @@
 import { useEffect, useRef } from 'react';
 import type { Attachment, ContentBlock, DisplayMessage } from '../../types';
+import { BrandLogo } from '../common/BrandLogo';
 import { BlockRenderer } from './blocks/BlockRenderer';
 import { MessageText } from './MessageText';
+import { MessageActions } from './MessageActions';
+import { SuggestionRow } from './SuggestionRow';
 
 const SUGGESTIONS = [
   'Find me a hostel under KSh 8,000 near Boma',
@@ -40,11 +43,17 @@ function TypingIndicator({ isSlow }: { isSlow: boolean }) {
 export function MessageList({
   messages,
   isSlow,
+  isStreaming,
   onSuggestion,
+  onRate,
+  onShare,
 }: {
   messages: DisplayMessage[];
   isSlow: boolean;
+  isStreaming: boolean;
   onSuggestion: (text: string) => void;
+  onRate: (messageId: string, rating: 1 | -1 | null) => void;
+  onShare?: (messageId: string, target: string) => void;
 }) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -69,7 +78,7 @@ export function MessageList({
   }
 
   const lastId = messages[messages.length - 1]?.id;
-  // A failed request leaves its assistant row with no content and
+  const isBusy = isStreaming;  // A failed request leaves its assistant row with no content and
   // pending:false - the error banner + retry action already cover that
   // turn, so skip rendering an empty bubble here rather than showing a
   // blank row next to the avatar.
@@ -83,7 +92,7 @@ export function MessageList({
         const attachmentBlocks = message.attachments ? attachmentsToBlocks(message.attachments) : [];
         return (
           <div key={message.id} className={`message-row ${message.role}`}>
-            {message.role === 'assistant' && <div className="message-avatar">O</div>}
+            {message.role === 'assistant' && <BrandLogo className="message-avatar" />}
             <div className="message-content">
               {message.pending && !message.content && !(message.blocks && message.blocks.length) ? (
                 <TypingIndicator isSlow={isSlow && message.id === lastId} />
@@ -93,6 +102,27 @@ export function MessageList({
                   {message.blocks && message.blocks.length > 0 && <BlockRenderer blocks={message.blocks} />}
                   <MessageText text={message.content} />
                   {message.pending && <span className="message-cursor" />}
+                  {/* Copy / share / rate, but only on a finished *assistant*
+                      answer. Not on the student's own message: there is
+                      nothing of ours to copy or rate there, and a thumb on
+                      your own question is meaningless. */}
+                  {!message.pending && message.content && message.role === 'assistant' && (
+                    <MessageActions
+                      text={message.content}
+                      blocks={message.blocks}
+                      rating={message.rating}
+                      ratingPending={message.ratingPending}
+                      onRate={(rating) => onRate(message.id, rating)}
+                      onShare={(target) => onShare?.(message.id, target)}
+                    />
+                  )}
+                  {/* Follow-ups belong to the newest answered question only, so
+                      the row never sits under a stale answer. Hidden while a
+                      new turn streams so it cannot be double-clicked into
+                      sending two questions. */}
+                  {message.id === lastId && !message.pending && (
+                    <SuggestionRow message={message} onSelect={onSuggestion} disabled={isBusy} />
+                  )}
                 </>
               )}
             </div>

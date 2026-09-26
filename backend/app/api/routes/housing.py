@@ -3,10 +3,21 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.api.deps import get_hostel_repo
-from app.repositories.hostel_repository import HostelRepository
-from app.schemas.housing import HostelOut, HostelSearchParams
+from app.repositories.hostel_repository import HostelRepository, RumiaUnavailable
+from app.schemas.housing import HostelAreasOut, HostelOut, HostelSearchParams
 
 router = APIRouter(prefix="/api/housing", tags=["housing"])
+
+
+@router.get("/areas", response_model=HostelAreasOut)
+async def list_areas(repo: HostelRepository = Depends(get_hostel_repo)) -> HostelAreasOut:
+    try:
+        return HostelAreasOut(areas=await repo.areas())
+    except RumiaUnavailable as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Housing listings are temporarily unavailable.",
+        ) from exc
 
 
 @router.get("/hostels", response_model=list[HostelOut])
@@ -27,12 +38,27 @@ async def search_hostels(
         verified_only=verified_only,
         limit=limit,
     )
-    return await repo.search(params)
+    try:
+        return await repo.search(params)
+    except RumiaUnavailable as exc:
+        # 503, not an empty list: the upstream housing source being
+        # unreachable is a server-side fault, and answering 200 with []
+        # would tell a student there is no housing near campus.
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Housing listings are temporarily unavailable.",
+        ) from exc
 
 
 @router.get("/hostels/{hostel_id}", response_model=HostelOut)
 async def get_hostel(hostel_id: str, repo: HostelRepository = Depends(get_hostel_repo)) -> HostelOut:
-    hostel = await repo.get_by_id(hostel_id)
+    try:
+        hostel = await repo.get_by_id(hostel_id)
+    except RumiaUnavailable as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Housing listings are temporarily unavailable.",
+        ) from exc
     if not hostel:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Hostel not found")
     return hostel

@@ -43,6 +43,50 @@ export interface TimetableEntry {
   end_time: string;
   venue: string;
   session_type: string;
+  academic_year?: string;
+  semester?: number;
+  year_group?: string;
+  stream?: string | null;
+  lecturer?: string | null;
+}
+
+export interface AcademicTerm {
+  id: string;
+  academic_year: string;
+  trimester: number;
+  label: string;
+  start_date: string;
+  end_date: string;
+  reporting_date?: string | null;
+  provisional: boolean;
+  notes: string;
+}
+
+export interface AcademicsMeta {
+  academic_years: string[];
+  year_groups: string[];
+  streams: string[];
+  session_types: string[];
+  deadline_categories: string[];
+  venues: string[];
+  current_academic_year: string;
+  current_trimester: number;
+  terms: AcademicTerm[];
+}
+
+export interface TimetableImportReport {
+  academic_year: string;
+  term_label: string;
+  programme_code: string;
+  courses_created: number;
+  courses_updated: number;
+  sessions_created: number;
+  sessions_updated: number;
+  sessions_removed: number;
+  sessions_without_a_catalogue_entry: string[];
+  warnings: string[];
+  official_trimester?: number | null;
+  summary?: string;
 }
 
 export interface AcademicDeadline {
@@ -176,13 +220,39 @@ export interface ChartBlock {
 export type ContentBlock = TableBlock | ListBlock | CardBlock | ComparisonBlock | FileBlock | ImageBlock | ChartBlock;
 
 export interface TraceEvent {
-  type: 'session' | 'status' | 'tool_call' | 'tool_result' | 'content_block' | 'answer_chunk' | 'error' | 'done' | 'stream_end';
+  type:
+    | 'session'
+    | 'turn_start'
+    | 'status'
+    | 'tool_call'
+    | 'tool_result'
+    | 'content_block'
+    | 'answer_chunk'
+    | 'error'
+    | 'done'
+    | 'stream_end';
   message?: string;
   tool?: string;
   status?: string;
   summary?: string;
   data?: Record<string, unknown> | null;
   session_id?: string;
+  /** The database id assigned to the assistant reply, sent on `stream_end`.
+   *  Until it arrives the frontend only has a temporary local id, which no
+   *  server-side action can address. */
+  message_id?: string | null;
+  /** The student's own question, carried on the synthetic `turn_start` frame
+   *  that separates one turn of work from the next. */
+  prompt?: string;
+  /** The tool's validated arguments, so the trace can show what was
+   *  actually searched for rather than only that a search ran. */
+  arguments?: Record<string, unknown> | null;
+  /** Server-measured duration of the step, in milliseconds. */
+  duration_ms?: number | null;
+  /** When this frame arrived, stamped client-side. Used for per-step elapsed
+   *  time and the live ticker; the server's duration_ms remains the
+   *  authoritative measure of a step's own work. */
+  receivedAt?: number;
 }
 
 export interface Attachment {
@@ -200,6 +270,8 @@ export interface ChatMessage {
   created_at: string;
   content_blocks?: ContentBlock[] | null;
   attachments?: Attachment[] | null;
+  /** This student's own thumbs verdict: 1, -1, or unset. */
+  rating?: 1 | -1 | null;
 }
 
 export interface ChatSessionSummary {
@@ -216,6 +288,10 @@ export interface DisplayMessage {
   intent?: Domain;
   pending?: boolean;
   blocks?: ContentBlock[];
+  /** 1 | -1 | undefined, optimistically updated by the thumbs control. */
+  rating?: 1 | -1;
+  /** True while a rating is being sent, so the control can avoid flicker. */
+  ratingPending?: boolean;
   attachments?: Attachment[];
 }
 
@@ -234,6 +310,10 @@ export interface Course {
   name: string;
   year_of_study: number;
   semester: number;
+  lecturer?: string | null;
+  lecture_hours?: number | null;
+  lab_hours?: number | null;
+  class_size?: number | null;
 }
 
 export interface AdminInsights {
@@ -243,4 +323,29 @@ export interface AdminInsights {
   intent_counts: Record<string, number>;
   complaint_category_counts: Record<string, number>;
   complaint_status_counts: Record<string, number>;
+}
+
+export interface ReindexAccepted {
+  started: boolean;
+  already_running: boolean;
+  detail: string;
+}
+
+export interface ReindexStatus {
+  running: boolean;
+  total_chunks: number;
+  indexed_papers: number;
+  total_papers: number;
+  last_report: {
+    papers_processed?: number;
+    papers_skipped?: number;
+    chunks_written?: number;
+    failed_papers?: { past_paper_id: string; file_name: string; error: string }[];
+    started_at?: string;
+    finished_at?: string;
+  } | null;
+  last_error: string | null;
+  embedding_backend: string;
+  embedding_model: string;
+  rag_enabled: boolean;
 }

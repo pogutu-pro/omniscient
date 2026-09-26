@@ -51,7 +51,17 @@ async def make_course(session: AsyncSession, **overrides) -> Course:
     programme = Programme(code="BCS", name="BSc Computer Science", school="Computing")
     session.add(programme)
     await session.flush()
-    defaults = dict(programme_id=programme.id, code="SCS 2101", name="Database Systems", year_of_study=2, semester=1)
+    defaults = dict(
+        programme_id=programme.id,
+        code="SCS 2101",
+        name="Database Systems",
+        year_of_study=2,
+        semester=1,
+        lecturer="Dr. Moso",
+        lecture_hours=2,
+        lab_hours=3,
+        class_size=90,
+    )
     defaults.update(overrides)
     course = Course(**defaults)
     session.add(course)
@@ -61,7 +71,20 @@ async def make_course(session: AsyncSession, **overrides) -> Course:
 
 
 async def make_timetable_entry(session: AsyncSession, course: Course, **overrides) -> TimetableEntry:
-    defaults = dict(course_id=course.id, day_of_week=0, start_time="08:00", end_time="10:00", venue="LT1", session_type="lecture")
+    # The cohort defaults follow the course, so a test only has to state a
+    # year group when it is testing the cohort itself.
+    defaults = dict(
+        course_id=course.id,
+        day_of_week=0,
+        start_time="08:00",
+        end_time="10:00",
+        venue="LT1",
+        session_type="lecture",
+        academic_year="2026/2027",
+        semester=course.semester,
+        year_group=f"{course.year_of_study}.{course.semester}",
+        stream=None,
+    )
     defaults.update(overrides)
     entry = TimetableEntry(**defaults)
     session.add(entry)
