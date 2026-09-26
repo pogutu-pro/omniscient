@@ -45,8 +45,8 @@ describe('TimetableView', () => {
     expect(screen.getByText('Today')).toBeInTheDocument();
     expect(screen.getByText('Now')).toBeInTheDocument();
     // Tuesday's entry (day_of_week 1) is a different day and must not be marked.
-    const tuesdayCard = screen.getByText('SCS 3110').closest('.timetable-entry');
-    expect(tuesdayCard).not.toHaveClass('is-now');
+    const tuesdayChip = screen.getByText('SCS 3110').closest('.timetable-chip');
+    expect(tuesdayChip).not.toHaveClass('is-now');
   });
 
   it('does not mark anything when the current day has no entries', () => {

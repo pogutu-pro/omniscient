@@ -120,39 +120,53 @@
   font-weight: var(--font-medium);
 }
 
-/* Timetable Grid & Entries */
-.timetable {
+/* Timetable Grid & Entries
+   Days as columns, periods as rows - a real school-timetable layout instead
+   of a long scrolling list. It scrolls horizontally on narrow screens rather
+   than squeezing five day columns into a phone width. */
+.timetable-grid-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background-color: var(--color-surface);
+}
+
+.timetable-grid {
+  display: grid;
+  min-width: 640px;
+}
+
+.timetable-grid-corner {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background-color: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  border-right: 1px solid var(--color-border);
+}
+
+.timetable-grid-day-header {
   display: flex;
   flex-direction: column;
-  gap: var(--space-6);
-}
-
-.timetable-day-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  margin-bottom: var(--space-2);
-  border-bottom: 1px solid var(--color-border);
-  padding-bottom: var(--space-1);
-}
-
-.timetable-day-header h3 {
-  display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: 4px;
+  padding: var(--space-3) var(--space-2);
+  border-bottom: 1px solid var(--color-border);
+  border-left: 1px solid var(--color-border);
+  background-color: var(--color-surface-hover);
+}
+
+.timetable-grid-day-header.is-today {
+  background-color: var(--color-brand-soft);
+}
+
+.timetable-grid-day-name {
   font-size: var(--text-sm);
   font-weight: var(--font-semibold);
   color: var(--color-text-primary);
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  margin: 0;
-}
-
-/* The one day out of the whole list that actually matters right now -
-   students opening this page are almost always asking "what do I have
-   today", not "show me the full week". */
-.timetable-day.is-today .timetable-day-header {
-  border-bottom-color: var(--color-brand);
 }
 
 .timetable-today-badge {
@@ -161,59 +175,78 @@
   font-size: var(--text-xs);
   font-weight: var(--font-semibold);
   color: var(--color-brand);
-  background: var(--color-brand-soft);
+  background-color: var(--color-surface);
   padding: 1px 8px;
   border-radius: var(--radius-full);
 }
 
-.timetable-day-count {
-  font-size: var(--text-xs);
-  color: var(--color-text-tertiary);
-}
-
-.timetable-entries {
+.timetable-grid-time-label {
+  position: sticky;
+  left: 0;
+  z-index: 1;
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
-}
-
-.timetable-entry {
-  display: flex;
-  gap: var(--space-4);
   align-items: center;
-  padding: var(--space-3) var(--space-4);
-  transition: border-color var(--transition-fast);
-}
-
-.timetable-entry:hover {
-  border-color: var(--color-border-strong);
-}
-
-.timetable-entry-time {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 110px;
-  flex-shrink: 0;
-}
-
-.time-range {
-  font-size: var(--text-sm);
-  font-weight: var(--font-semibold);
-  color: var(--color-brand);
-}
-
-.timetable-entry-cohort {
+  justify-content: center;
+  gap: 2px;
+  padding: var(--space-2);
   font-size: 11px;
   font-weight: var(--font-medium);
   color: var(--color-text-tertiary);
+  background-color: var(--color-surface);
+  border-right: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+  text-align: center;
+}
+
+.timetable-grid-time-sep {
+  opacity: 0.5;
+}
+
+.timetable-grid-cell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border-left: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+  min-height: 64px;
+}
+
+/* A faint tint on the whole today column, distinct from the stronger
+   highlight on the specific class happening right now within it. */
+.timetable-grid-cell.is-today {
+  background-color: var(--color-surface-hover);
+}
+
+.timetable-grid-empty {
+  color: var(--color-text-tertiary);
+  opacity: 0.4;
+  font-size: var(--text-sm);
+  align-self: center;
+  margin: auto 0;
+}
+
+.timetable-chip {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: var(--space-2);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  transition: border-color var(--transition-fast);
+}
+
+.timetable-chip:hover {
+  border-color: var(--color-border-strong);
 }
 
 /* The class actually in session right now, distinguished from the rest of
-   an otherwise flat list of rows that all look equally important. */
-.timetable-entry.is-now {
+   an otherwise flat grid of cells that all look equally important. */
+.timetable-chip.is-now {
   border-color: var(--color-brand);
-  background: var(--color-brand-soft);
+  background-color: var(--color-brand-soft);
 }
 
 .timetable-now-badge {
@@ -229,7 +262,7 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--color-brand);
+  background-color: var(--color-brand);
   animation: timetable-now-pulse 1.6s ease-in-out infinite;
 }
 
@@ -243,43 +276,32 @@
   }
 }
 
-.timetable-entry-body {
-  flex: 1;
-  min-width: 0;
-}
-
-.timetable-entry-title-row {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-}
-
-.timetable-entry-code {
+.timetable-chip-code {
   font-weight: var(--font-semibold);
   color: var(--color-text-primary);
   font-size: var(--text-sm);
 }
 
-.timetable-entry-name {
+.timetable-chip-venue {
   color: var(--color-text-secondary);
-  font-size: var(--text-sm);
+  font-size: var(--text-xs);
 }
 
-.timetable-entry-meta {
-  color: var(--color-text-tertiary);
-  font-size: var(--text-xs);
-  margin-top: 4px;
+.timetable-chip-meta {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
+  margin-top: 2px;
 }
 
-.timetable-entry-venue strong,
-.timetable-entry-lecturer strong {
+.timetable-chip-cohort {
+  font-size: 10px;
   font-weight: var(--font-medium);
-  color: var(--color-text-secondary);
+  color: var(--color-text-tertiary);
+  background-color: var(--color-surface-hover);
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
 }
 
 /* Deadlines */
@@ -406,6 +428,58 @@
   font-weight: var(--font-semibold);
   color: var(--color-text-primary);
   margin-top: var(--space-2);
+}
+
+.academic-year-switcher {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.academic-year-switcher .section-title {
+  margin-top: 0;
+}
+
+.year-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.year-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--color-border);
+  background-color: transparent;
+  color: var(--color-text-secondary);
+  padding: 4px 10px;
+  border-radius: var(--radius-md);
+  font-size: var(--text-xs);
+  font-weight: var(--font-medium);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.year-pill:hover {
+  background-color: var(--color-surface-hover);
+  color: var(--color-text-primary);
+}
+
+.year-pill.year-pill-active {
+  background-color: var(--color-brand);
+  color: #fff;
+  border-color: var(--color-brand);
+}
+
+.year-pill-current-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background-color: currentColor;
+  opacity: 0.8;
 }
 
 /* Trimester Cards Grid */

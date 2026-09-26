@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import type { AcademicTerm } from '../../types';
 
 interface AcademicCalendarViewProps {
@@ -11,10 +12,25 @@ export function AcademicCalendarView({
   currentAcademicYear,
   currentTrimester,
 }: AcademicCalendarViewProps) {
-  // Sort terms by trimester order (1, 2, 3)
-  const sortedTerms = [...terms].sort((a, b) => a.trimester - b.trimester);
+  // The API returns terms for every academic year it knows about (past,
+  // current, and planned). Rendering them all in one flat grid put three
+  // near-identical "Semester 1" cards side by side with nothing but a tiny
+  // date distinguishing them, which read as duplicated content rather than
+  // as three different years. Grouping by year and showing one year at a
+  // time (defaulting to the current one) is what turns that into the three
+  // trimesters of a single year, plus a way to look at another year.
+  const academicYears = [...new Set(terms.map((t) => t.academic_year))].sort();
+  const [selectedYear, setSelectedYear] = useState(currentAcademicYear || academicYears[0] || '');
 
-  const currentTerm = terms.find((t) => t.trimester === currentTrimester);
+  useEffect(() => {
+    if (currentAcademicYear) setSelectedYear(currentAcademicYear);
+  }, [currentAcademicYear]);
+
+  const sortedTerms = terms
+    .filter((t) => t.academic_year === selectedYear)
+    .sort((a, b) => a.trimester - b.trimester);
+
+  const currentTerm = terms.find((t) => t.trimester === currentTrimester && t.academic_year === currentAcademicYear);
 
   const getTrimesterPeriod = (trimester: number): string => {
     switch (trimester) {
@@ -50,16 +66,12 @@ export function AcademicCalendarView({
               year starting in September and divided into three semesters of roughly four months each.
             </p>
           </div>
-          {currentTrimester && (
-            <div className="current-term-badge">
-              <span className="pulse-dot" />
-              <span>
-                Semester {currentTrimester} Active ({currentAcademicYear ?? 'Current Year'})
-              </span>
-            </div>
-          )}
         </div>
 
+        {/* Which semester is active right now - stated once, here, with the
+            actual dates. The page header already carries a persistent
+            "Semester X · year" pill, so a second badge repeating exactly
+            this line (with no extra information) was the duplication. */}
         {currentTerm && (
           <div className="current-term-highlight">
             <div className="current-term-info">
@@ -83,11 +95,34 @@ export function AcademicCalendarView({
         )}
       </div>
 
-      <h3 className="section-title">Academic Year Schedule ({currentAcademicYear ?? '2026/2027'})</h3>
+      <div className="academic-year-switcher">
+        <h3 className="section-title">Academic Year Schedule ({selectedYear || 'unavailable'})</h3>
+        {academicYears.length > 1 && (
+          <div className="year-pills">
+            {academicYears.map((year) => (
+              <button
+                key={year}
+                type="button"
+                className={`year-pill${year === selectedYear ? ' year-pill-active' : ''}`}
+                onClick={() => setSelectedYear(year)}
+              >
+                {year}
+                {year === currentAcademicYear && <span className="year-pill-current-dot" />}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {sortedTerms.length === 0 && (
+        <div className="empty-state card">
+          <p>No trimester dates published for {selectedYear || 'this year'} yet.</p>
+        </div>
+      )}
 
       <div className="trimester-grid">
         {sortedTerms.map((term) => {
-          const isCurrent = term.trimester === currentTrimester;
+          const isCurrent = term.trimester === currentTrimester && term.academic_year === currentAcademicYear;
           const period = getTrimesterPeriod(term.trimester);
 
           return (

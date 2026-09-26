@@ -1,6 +1,6 @@
 import type { TimetableEntry } from '../../types';
 
-const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+const DAY_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 /** JS's `Date.getDay()` is 0=Sunday..6=Saturday; this list is 0=Monday..6=Sunday. */
 function todayIndex(): number {
@@ -18,6 +18,20 @@ function isHappeningNow(entry: TimetableEntry, now: string): boolean {
   return entry.start_time <= now && now < entry.end_time;
 }
 
+function getSessionBadgeClass(sessionType: string) {
+  switch (sessionType.toLowerCase()) {
+    case 'lab':
+      return 'badge badge-warning';
+    case 'online':
+      return 'badge badge-verified';
+    case 'tutorial':
+      return 'badge badge-neutral';
+    case 'lecture':
+    default:
+      return 'badge badge-info';
+  }
+}
+
 interface TimetableViewProps {
   entries: TimetableEntry[];
   selectedCohort?: string;
@@ -25,16 +39,7 @@ interface TimetableViewProps {
 }
 
 export function TimetableView({ entries, selectedCohort, onClearFilters }: TimetableViewProps) {
-  const byDay = new Map<number, TimetableEntry[]>();
-  for (const entry of entries) {
-    const list = byDay.get(entry.day_of_week) ?? [];
-    list.push(entry);
-    byDay.set(entry.day_of_week, list);
-  }
-
-  const days = [...byDay.keys()].sort((a, b) => a - b);
-
-  if (days.length === 0) {
+  if (entries.length === 0) {
     return (
       <div className="empty-state card">
         <p>No timetable entries found{selectedCohort ? ` for ${selectedCohort}` : ''}.</p>
@@ -47,84 +52,116 @@ export function TimetableView({ entries, selectedCohort, onClearFilters }: Timet
     );
   }
 
-  const getSessionBadgeClass = (sessionType: string) => {
-    switch (sessionType.toLowerCase()) {
-      case 'lab':
-        return 'badge badge-warning';
-      case 'online':
-        return 'badge badge-verified';
-      case 'tutorial':
-        return 'badge badge-neutral';
-      case 'lecture':
-      default:
-        return 'badge badge-info';
+  const days = [...new Set(entries.map((e) => e.day_of_week))].sort((a, b) => a - b);
+
+  // Periods are shared across days (DeKUT runs fixed slots like 08:00-10:00,
+  // 10:00-12:00, ...), so grouping by start time turns the data into real
+  // timetable rows instead of one row per entry. A cell can still hold more
+  // than one class - e.g. "All Cohorts" shows every stream at once - so cells
+  // stack their entries rather than assuming exactly one per slot.
+  const periodMap = new Map<string, { start: string; end: string }>();
+  for (const entry of entries) {
+    if (!periodMap.has(entry.start_time)) {
+      periodMap.set(entry.start_time, { start: entry.start_time, end: entry.end_time });
     }
-  };
+  }
+  const periods = [...periodMap.values()].sort((a, b) => a.start.localeCompare(b.start));
+
+  const cellMap = new Map<string, TimetableEntry[]>();
+  for (const entry of entries) {
+    const key = `${entry.day_of_week}|${entry.start_time}`;
+    const list = cellMap.get(key) ?? [];
+    list.push(entry);
+    cellMap.set(key, list);
+  }
 
   const today = todayIndex();
   const now = nowHHMM();
 
   return (
-    <div className="timetable">
+    <div className="timetable-grid-scroll">
+      <div
+        className="timetable-grid"
+        style={{ gridTemplateColumns: `88px repeat(${days.length}, minmax(150px, 1fr))` }}
+      >
+        <div className="timetable-grid-corner" />
+        {days.map((day) => (
+          <div key={day} className={`timetable-grid-day-header${day === today ? ' is-today' : ''}`}>
+            <span className="timetable-grid-day-name">{DAY_SHORT[day]}</span>
+            {day === today && <span className="timetable-today-badge">Today</span>}
+          </div>
+        ))}
+
+        {periods.map((period) => (
+          <FragmentRow
+            key={period.start}
+            period={period}
+            days={days}
+            today={today}
+            now={now}
+            cellMap={cellMap}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+interface FragmentRowProps {
+  period: { start: string; end: string };
+  days: number[];
+  today: number;
+  now: string;
+  cellMap: Map<string, TimetableEntry[]>;
+}
+
+function FragmentRow({ period, days, today, now, cellMap }: FragmentRowProps) {
+  return (
+    <>
+      <div className="timetable-grid-time-label">
+        <span>{period.start}</span>
+        <span className="timetable-grid-time-sep">–</span>
+        <span>{period.end}</span>
+      </div>
       {days.map((day) => {
-        const dayEntries = byDay.get(day)!.sort((a, b) => a.start_time.localeCompare(b.start_time));
+        const cellEntries = cellMap.get(`${day}|${period.start}`) ?? [];
         const isToday = day === today;
 
         return (
-          <div key={day} className={`timetable-day${isToday ? ' is-today' : ''}`}>
-            <div className="timetable-day-header">
-              <h3>
-                {DAY_NAMES[day]}
-                {isToday && <span className="timetable-today-badge">Today</span>}
-              </h3>
-              <span className="timetable-day-count">{dayEntries.length} {dayEntries.length === 1 ? 'class' : 'classes'}</span>
-            </div>
-            <div className="timetable-entries">
-              {dayEntries.map((entry) => {
-                const cohortLabel = [entry.year_group ? `Year ${entry.year_group}` : '', entry.stream]
+          <div key={day} className={`timetable-grid-cell${isToday ? ' is-today' : ''}`}>
+            {cellEntries.length === 0 ? (
+              <span className="timetable-grid-empty">&mdash;</span>
+            ) : (
+              cellEntries.map((entry) => {
+                const cohortLabel = [entry.year_group ? `Y${entry.year_group}` : '', entry.stream]
                   .filter(Boolean)
                   .join(' · ');
                 const happeningNow = isToday && isHappeningNow(entry, now);
 
                 return (
-                  <div key={entry.id} className={`card timetable-entry${happeningNow ? ' is-now' : ''}`}>
-                    <div className="timetable-entry-time">
-                      <span className="time-range">
-                        {entry.start_time} – {entry.end_time}
+                  <div
+                    key={entry.id}
+                    className={`timetable-chip${happeningNow ? ' is-now' : ''}`}
+                    title={`${entry.course_name}${entry.lecturer ? ` · ${entry.lecturer}` : ''}`}
+                  >
+                    {happeningNow && (
+                      <span className="timetable-now-badge">
+                        <span className="timetable-now-dot" /> Now
                       </span>
-                      {happeningNow && (
-                        <span className="timetable-now-badge">
-                          <span className="timetable-now-dot" /> Now
-                        </span>
-                      )}
-                      {cohortLabel && <span className="timetable-entry-cohort">{cohortLabel}</span>}
-                    </div>
-                    <div className="timetable-entry-body">
-                      <div className="timetable-entry-title-row">
-                        <span className="timetable-entry-code">{entry.course_code}</span>
-                        <span className="timetable-entry-name">{entry.course_name}</span>
-                      </div>
-                      <div className="timetable-entry-meta">
-                        <span className="timetable-entry-venue">
-                          <strong>Venue:</strong> {entry.venue}
-                        </span>
-                        {entry.lecturer && (
-                          <span className="timetable-entry-lecturer">
-                            &middot; <strong>Lecturer:</strong> {entry.lecturer}
-                          </span>
-                        )}
-                        <span className={getSessionBadgeClass(entry.session_type)}>
-                          {entry.session_type}
-                        </span>
-                      </div>
+                    )}
+                    <span className="timetable-chip-code">{entry.course_code}</span>
+                    <span className="timetable-chip-venue">{entry.venue}</span>
+                    <div className="timetable-chip-meta">
+                      {cohortLabel && <span className="timetable-chip-cohort">{cohortLabel}</span>}
+                      <span className={getSessionBadgeClass(entry.session_type)}>{entry.session_type}</span>
                     </div>
                   </div>
                 );
-              })}
-            </div>
+              })
+            )}
           </div>
         );
       })}
-    </div>
+    </>
   );
 }
