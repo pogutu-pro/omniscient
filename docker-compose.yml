@@ -144,7 +144,11 @@ services:
     expose:
       - "80"
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost/"]
+      # 127.0.0.1, not localhost: the nginx image resolves localhost to
+      # ::1 first and nginx here listens IPv4-only, so `wget localhost`
+      # reports a connection refused and the container is marked unhealthy
+      # even though it is serving.
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -178,7 +182,12 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
-      # Binding 80/443 needs this one; nothing else is granted.
+    cap_add:
+      # Binding 80/443 needs this one; nothing else is granted. It must be
+      # cap_add, not cap_drop: the official Caddy image carries a file
+      # capability on /usr/bin/caddy, and with no-new-privileges set and
+      # NET_BIND_SERVICE absent from the bounding set, exec fails with
+      # "operation not permitted" and the container restart-loops.
       - NET_BIND_SERVICE
     deploy:
       resources:

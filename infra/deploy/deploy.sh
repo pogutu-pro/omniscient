@@ -48,6 +48,15 @@ for key in POSTGRES_USER POSTGRES_PASSWORD POSTGRES_DB SECRET_KEY; do
   fi
 done
 
+# --- Update repository ---------------------------------------------------
+# The images carry the application code, but the compose file, Caddyfile
+# and the scripts live in the checkout. Pull them forward so a compose or
+# Caddyfile fix ships with the release. `.env` is untracked, so it is never
+# touched. A failed pull is fatal on purpose: deploying new images against
+# a stale compose is how a fix silently fails to take effect.
+log "Updating repository"
+git -C "$APP_DIR" pull --ff-only
+
 export IMAGE_TAG BACKEND_IMAGE FRONTEND_IMAGE
 
 # --- Pull ----------------------------------------------------------------
