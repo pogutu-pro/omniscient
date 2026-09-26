@@ -12,9 +12,11 @@ WORKDIR /app
 
 # psycopg2-binary and asyncpg both ship their own Postgres client code in
 # their wheels, so no system libpq package is needed here. curl is for the
-# container healthcheck; nothing else needs a system package.
+# container healthcheck. ghostscript is what shrinks an uploaded past-paper
+# PDF before it is stored in R2 (see services/pdf_compression.py); without
+# it the compression step is a safe no-op.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl \
+    && apt-get install -y --no-install-recommends curl ghostscript \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt ./
